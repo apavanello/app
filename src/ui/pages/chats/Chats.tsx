@@ -729,13 +729,20 @@ const CharacterCard = memo(
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerLeave}
         className={cn(
-          "group relative flex w-full items-center gap-3.5 lg:gap-6 p-3.5 lg:p-6 text-left",
-          "rounded-2xl lg:rounded-3xl border",
+          "group relative flex w-full items-center gap-3.5 lg:gap-6 p-3.5 lg:p-6 text-left overflow-hidden",
+          "rounded-2xl lg:rounded-3xl",
           interactive.transition.default,
           interactive.active.scale,
-          hasGradient ? "border-white/15" : "border-white/10 bg-[#1a1b23] hover:bg-[#22232d]",
+          hasGradient ? "" : "border border-white/10 bg-[#1a1b23] hover:bg-[#22232d]",
         )}
-        style={hasGradient ? { background: gradientCss } : {}}
+        style={
+          hasGradient
+            ? {
+                background: gradientCss,
+                boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.12)",
+              }
+            : {}
+        }
       >
         {/* Circular Avatar */}
         <div
@@ -882,13 +889,20 @@ const HeroCard = memo(
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerLeave}
         className={cn(
-          "group relative flex w-full items-center gap-8 p-8 text-left",
-          "rounded-3xl border",
+          "group relative flex w-full items-center gap-8 p-8 text-left overflow-hidden",
+          "rounded-3xl",
           interactive.transition.default,
           interactive.active.scale,
-          hasGradient ? "border-white/15" : "border-white/10 bg-[#1a1b23] hover:bg-[#22232d]",
+          hasGradient ? "" : "border border-white/10 bg-[#1a1b23] hover:bg-[#22232d]",
         )}
-        style={hasGradient ? { background: gradientCss } : {}}
+        style={
+          hasGradient
+            ? {
+                background: gradientCss,
+                boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.12)",
+              }
+            : {}
+        }
       >
         {/* Large Avatar */}
         <div
