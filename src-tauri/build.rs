@@ -4,9 +4,19 @@ use std::io::{self, Cursor};
 use std::path::PathBuf;
 
 fn main() {
-    if std::env::var("CARGO_CFG_TARGET_OS").map_or(false, |s| s == "android") {
+    println!("cargo:rerun-if-env-changed=ORT_LIB_LOCATION");
+
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    if target_os == "android" {
         println!("cargo:warning=Detected Android build, checking ONNX Runtime libraries...");
         setup_android_libs().expect("Failed to setup Android libraries");
+    } else if target_os == "ios" {
+        println!("cargo:warning=Detected iOS build.");
+        if std::env::var("ORT_LIB_LOCATION").is_err() {
+            println!(
+                "cargo:warning=ORT_LIB_LOCATION is not set. iOS builds require a CoreML-enabled ONNX Runtime library location."
+            );
+        }
     } else {
         println!(
             "cargo:warning=Detected Desktop build, skipping ONNX Runtime download (runtime fetch)."

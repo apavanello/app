@@ -75,9 +75,13 @@ bun run tauri android build
 - Install Xcode from the App Store
 - Install Xcode command-line tools: `xcode-select --install`
 - Install CocoaPods: `sudo gem install cocoapods` (or Homebrew)
+- Provide ONNX Runtime for iOS with CoreML support:
+  - Build/download an iOS-compatible ONNX Runtime package that includes CoreML EP
+  - Set `ORT_LIB_LOCATION` to the directory containing the ONNX Runtime libraries before building
 - Initialize iOS project files:
 
 ```bash
+export ORT_LIB_LOCATION=/absolute/path/to/onnxruntime/ios/libs
 bun run tauri ios init
 ```
 

@@ -1,5 +1,13 @@
 use super::*;
 use crate::utils::log_info;
+#[cfg(target_os = "ios")]
+use ort::{
+    execution_providers::coreml::{
+        CoreMLComputeUnits, CoreMLExecutionProvider, CoreMLModelFormat,
+        CoreMLSpecializationStrategy,
+    },
+    execution_providers::ExecutionProviderDispatch,
+};
 use ort::{
     inputs,
     session::{builder::GraphOptimizationLevel, Session},
@@ -220,11 +228,60 @@ pub(super) fn compute_embedding_with_session(
     }
 }
 
+fn configure_session_builder_for_target(
+    builder: ort::session::builder::SessionBuilder,
+    model_path: &Path,
+) -> Result<ort::session::builder::SessionBuilder, String> {
+    #[cfg(target_os = "ios")]
+    {
+        let mut builder = builder;
+        let cache_dir = model_path
+            .parent()
+            .ok_or_else(|| {
+                crate::utils::err_msg(
+                    module_path!(),
+                    line!(),
+                    "Failed to resolve parent directory for embedding model path",
+                )
+            })?
+            .join("coreml-cache");
+
+        fs::create_dir_all(&cache_dir)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+        // Prefer Apple Neural Engine when available; ORT falls back to CPU for unsupported ops.
+        let coreml_ep: ExecutionProviderDispatch = CoreMLExecutionProvider::default()
+            .with_compute_units(CoreMLComputeUnits::CPUAndNeuralEngine)
+            .with_model_format(CoreMLModelFormat::MLProgram)
+            .with_specialization_strategy(CoreMLSpecializationStrategy::FastPrediction)
+            .with_static_input_shapes(true)
+            .with_model_cache_dir(cache_dir.to_string_lossy())
+            .build()
+            .error_on_failure();
+
+        builder = builder.with_execution_providers([coreml_ep]).map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to configure CoreML execution provider: {}", e),
+            )
+        })?;
+
+        return Ok(builder);
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = model_path;
+        Ok(builder)
+    }
+}
+
 fn create_runtime(
     model_path: &Path,
     tokenizer_path: &Path,
 ) -> Result<(Session, Tokenizer), String> {
-    let session = Session::builder()
+    let session_builder = Session::builder()
         .map_err(|e| {
             crate::utils::err_msg(
                 module_path!(),
@@ -239,7 +296,9 @@ fn create_runtime(
                 line!(),
                 format!("Failed to set optimization level: {}", e),
             )
-        })?
+        })?;
+
+    let session = configure_session_builder_for_target(session_builder, model_path)?
         .commit_from_file(model_path)
         .map_err(|e| {
             crate::utils::err_msg(
