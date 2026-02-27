@@ -224,7 +224,7 @@ export default function ChatTemplateEditorPage() {
   // Scene selector
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
   const [showSceneMenu, setShowSceneMenu] = useState(false);
-  const [showMobileOptionsMenu, setShowMobileOptionsMenu] = useState(false);
+  const [_showMobileOptionsMenu, setShowMobileOptionsMenu] = useState(false);
   const [showPromptTemplateMenu, setShowPromptTemplateMenu] = useState(false);
   const [promptTemplates, setPromptTemplates] = useState<SystemPromptTemplate[]>([]);
   const [selectedPromptTemplateId, setSelectedPromptTemplateId] = useState<string | null>(null);
