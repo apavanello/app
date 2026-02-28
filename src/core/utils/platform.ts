@@ -27,4 +27,21 @@ export function getPlatform(): AppPlatform {
                 arch: archName
             };
     };
-};
+}
+
+/** True when running as Tauri app on iOS (used for frontend memory retrieval path). */
+export function isIOS(): boolean {
+    return type() === "ios";
+}
+
+export function getSafeAreaBottomPadding(extraPx = 0): string {
+    return extraPx === 0
+        ? "env(safe-area-inset-bottom)"
+        : `calc(env(safe-area-inset-bottom) + ${extraPx}px)`;
+}
+
+export function getSafeAreaTopPadding(extraPx = 0): string {
+    return extraPx === 0
+        ? "env(safe-area-inset-top)"
+        : `calc(env(safe-area-inset-top) + ${extraPx}px)`;
+}
