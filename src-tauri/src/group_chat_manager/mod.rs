@@ -110,6 +110,28 @@ pub struct GroupChatContext {
     pub user_message: String,
 }
 
+fn emit_group_chat_status(
+    app: &AppHandle,
+    session_id: &str,
+    status: &str,
+    extra: Map<String, Value>,
+) {
+    let mut payload = Map::new();
+    payload.insert(
+        "sessionId".to_string(),
+        Value::String(session_id.to_string()),
+    );
+    payload.insert("status".to_string(), Value::String(status.to_string()));
+    payload.extend(extra);
+    let _ = app.emit("group_chat_status", Value::Object(payload));
+}
+
+fn emit_group_chat_error_status(app: &AppHandle, session_id: &str, message: &str) {
+    let mut extra = Map::new();
+    extra.insert("message".to_string(), Value::String(message.to_string()));
+    emit_group_chat_status(app, session_id, "error", extra);
+}
+
 struct AbortGuard<'a> {
     registry: &'a AbortRegistry,
     request_id: String,
@@ -220,7 +242,12 @@ fn build_llama_extra_fields(model: &Model, settings: &Settings) -> Option<HashMa
         .advanced_model_settings
         .as_ref()
         .and_then(|a| a.llama_flash_attention.clone())
-        .or_else(|| settings.advanced_model_settings.llama_flash_attention.clone())
+        .or_else(|| {
+            settings
+                .advanced_model_settings
+                .llama_flash_attention
+                .clone()
+        })
         .map(|v| v.trim().to_ascii_lowercase())
         .filter(|v| !v.is_empty())
     {
@@ -974,11 +1001,11 @@ async fn process_group_dynamic_memory_cycle(
     );
     let dynamic_settings = effective_group_dynamic_memory_settings(settings);
 
-    if !dynamic_settings.enabled {
+    if session.memory_type != "dynamic" {
         log_info(
             app,
             "group_dynamic_memory",
-            "dynamic memory disabled globally; skipping",
+            "session memory_type is not dynamic; skipping",
         );
         return Ok(());
     }
@@ -2394,8 +2421,10 @@ fn load_characters_info(
                 .or(description.as_ref())
                 .or(system_prompt.as_ref());
             let personality_summary = personality_source.map(|s| {
-                if s.len() > 200 {
-                    format!("{}...", &s[..200])
+                let mut summary: String = s.chars().take(200).collect();
+                if summary.len() < s.len() {
+                    summary.push_str("...");
+                    summary
                 } else {
                     s.clone()
                 }
@@ -3298,10 +3327,8 @@ async fn generate_character_response(
     let api_key = resolve_api_key(app, cred, "group_chat")?;
 
     let dynamic_settings = effective_group_dynamic_memory_settings(settings);
-    let dynamic_enabled =
-        dynamic_settings.enabled && character.memory_type.eq_ignore_ascii_case("dynamic");
 
-    let retrieved_memories = if dynamic_enabled {
+    let retrieved_memories = if context.session.memory_type == "dynamic" {
         // Retrieve relevant memories for context using dynamic memory settings
         let min_similarity = dynamic_settings.min_similarity_threshold;
         let fixed = ensure_pinned_hot(&mut context.session.memory_embeddings);
@@ -3374,7 +3401,7 @@ async fn generate_character_response(
 
     // Apply conversation window limit for dynamic memory (like normal chat)
     // This ensures we only send the last N messages to the LLM based on dynamic_window_size
-    let messages_for_generation = if dynamic_enabled {
+    let messages_for_generation = if context.session.memory_type == "dynamic" {
         let window_size = dynamic_settings.summary_message_interval.max(1) as usize;
         conversation_window(&context.recent_messages, window_size)
     } else {
@@ -3712,15 +3739,9 @@ pub async fn group_chat_send(
     let user_msg = save_user_message(&conn, &session_id, &user_message)?;
     let mention_result = parse_mentions(&user_message, &context.characters);
 
-    let _ = app.emit(
-        "group_chat_status",
-        json!({
-            "sessionId": session_id,
-            "status": "selecting_character",
-        }),
-    );
+    emit_group_chat_status(&app, &session_id, "selecting_character", Map::new());
 
-    let (mut selected_character_id, mut selection_reasoning, was_mentioned) = if let Some(
+    let selection_result: Result<(String, Option<String>, bool), String> = if let Some(
         mentioned_id,
     ) = mention_result
     {
@@ -3729,22 +3750,18 @@ pub async fn group_chat_send(
             "group_chat_send",
             format!("User mentioned character {}", mentioned_id),
         );
-        (
+        Ok((
             mentioned_id,
             Some("User mentioned this character directly".to_string()),
             true,
-        )
+        ))
     } else {
         let method = context.session.speaker_selection_method.as_str();
         match method {
-            "heuristic" => {
-                let result = selection::heuristic_select_speaker(&context)?;
-                (result.character_id, result.reasoning, false)
-            }
-            "round_robin" => {
-                let result = selection::round_robin_select_speaker(&context)?;
-                (result.character_id, result.reasoning, false)
-            }
+            "heuristic" => selection::heuristic_select_speaker(&context)
+                .map(|result| (result.character_id, result.reasoning, false)),
+            "round_robin" => selection::round_robin_select_speaker(&context)
+                .map(|result| (result.character_id, result.reasoning, false)),
             _ => {
                 // "llm" (default) - LLM with heuristic fallback
                 let selection_result = tokio::select! {
@@ -3768,7 +3785,7 @@ pub async fn group_chat_send(
                                 selection.character_id, selection.reasoning
                             ),
                         );
-                        (selection.character_id, selection.reasoning, false)
+                        Ok((selection.character_id, selection.reasoning, false))
                     }
                     Err(err) => {
                         log_error(
@@ -3776,11 +3793,20 @@ pub async fn group_chat_send(
                             "group_chat_send",
                             format!("LLM selection failed: {}, using heuristic", err),
                         );
-                        let fallback = selection::heuristic_select_speaker(&context)?;
-                        (fallback.character_id, fallback.reasoning, false)
+                        selection::heuristic_select_speaker(&context)
+                            .map(|fallback| (fallback.character_id, fallback.reasoning, false))
                     }
                 }
             }
+        }
+    };
+
+    let (mut selected_character_id, mut selection_reasoning, was_mentioned) = match selection_result
+    {
+        Ok(result) => result,
+        Err(err) => {
+            emit_group_chat_error_status(&app, &session_id, &err);
+            return Err(err);
         }
     };
 
@@ -3798,9 +3824,16 @@ pub async fn group_chat_send(
                 selected_character_id
             ),
         );
-        let fallback = selection::heuristic_select_speaker(&context)?;
-        selected_character_id = fallback.character_id;
-        selection_reasoning = fallback.reasoning;
+        match selection::heuristic_select_speaker(&context) {
+            Ok(fallback) => {
+                selected_character_id = fallback.character_id;
+                selection_reasoning = fallback.reasoning;
+            }
+            Err(err) => {
+                emit_group_chat_error_status(&app, &session_id, &err);
+                return Err(err);
+            }
+        }
     }
 
     if !context
@@ -3808,28 +3841,38 @@ pub async fn group_chat_send(
         .character_ids
         .contains(&selected_character_id)
     {
-        return Err(format!(
+        let err = format!(
             "Selected character {} is not in this group chat",
             selected_character_id
-        ));
+        );
+        emit_group_chat_error_status(&app, &session_id, &err);
+        return Err(err);
     }
 
     let character = context
         .characters
         .iter()
         .find(|c| c.id == selected_character_id)
-        .ok_or_else(|| "Character not found".to_string())?
-        .clone();
+        .cloned();
+    let character = match character {
+        Some(character) => character,
+        None => {
+            let err = "Character not found".to_string();
+            emit_group_chat_error_status(&app, &session_id, &err);
+            return Err(err);
+        }
+    };
 
-    let _ = app.emit(
-        "group_chat_status",
-        json!({
-            "sessionId": session_id,
-            "status": "character_selected",
-            "characterId": selected_character_id,
-            "characterName": character.name,
-        }),
+    let mut selected_extra = Map::new();
+    selected_extra.insert(
+        "characterId".to_string(),
+        Value::String(selected_character_id.clone()),
     );
+    selected_extra.insert(
+        "characterName".to_string(),
+        Value::String(character.name.clone()),
+    );
+    emit_group_chat_status(&app, &session_id, "character_selected", selected_extra);
 
     context.recent_messages.push(user_msg);
 
@@ -3844,7 +3887,13 @@ pub async fn group_chat_send(
     )
     .await;
 
-    let (response_content, reasoning, message_usage, model_id_str) = response_result?;
+    let (response_content, reasoning, message_usage, model_id_str) = match response_result {
+        Ok(result) => result,
+        Err(err) => {
+            emit_group_chat_error_status(&app, &session_id, &err);
+            return Err(err);
+        }
+    };
 
     let conn = pool.get_connection()?;
 
@@ -3884,14 +3933,12 @@ pub async fn group_chat_send(
         participation_stats,
     };
 
-    let _ = app.emit(
-        "group_chat_status",
-        json!({
-            "sessionId": session_id,
-            "status": "complete",
-            "characterId": &response.character_id,
-        }),
+    let mut complete_extra = Map::new();
+    complete_extra.insert(
+        "characterId".to_string(),
+        Value::String(response.character_id.clone()),
     );
+    emit_group_chat_status(&app, &session_id, "complete", complete_extra);
 
     log_info(
         &app,
@@ -3907,11 +3954,7 @@ pub async fn group_chat_send(
     let session_json = group_sessions::group_session_get_internal(&conn, &session_id)?;
     let mut updated_session: GroupSession = serde_json::from_str(&session_json)
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    let dynamic_settings = effective_group_dynamic_memory_settings(&settings);
-    let dynamic_enabled =
-        dynamic_settings.enabled && character.memory_type.eq_ignore_ascii_case("dynamic");
-
-    if dynamic_enabled {
+    if updated_session.memory_type == "dynamic" {
         if let Err(e) =
             process_group_dynamic_memory_cycle(&app, &mut updated_session, &settings, &pool).await
         {
@@ -3947,13 +3990,11 @@ pub async fn group_chat_retry_dynamic_memory(
     let session_json = group_sessions::group_session_get_internal(&conn, &session_id)?;
     let mut session: GroupSession = serde_json::from_str(&session_json)
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    let dynamic_settings = effective_group_dynamic_memory_settings(&settings);
-
-    if !dynamic_settings.enabled {
+    if session.memory_type != "dynamic" {
         log_info(
             &app,
             "group_chat_retry_dynamic_memory",
-            "dynamic memory disabled for group; skipping manual retry".to_string(),
+            "session memory_type is not dynamic; skipping manual retry".to_string(),
         );
         return Ok(());
     }
@@ -3979,13 +4020,7 @@ pub async fn group_chat_regenerate(
         ),
     );
 
-    let _ = app.emit(
-        "group_chat_status",
-        json!({
-            "sessionId": session_id,
-            "status": "selecting_character",
-        }),
-    );
+    emit_group_chat_status(&app, &session_id, "selecting_character", Map::new());
 
     let settings = load_settings(&app)?;
     let conn = pool.get_connection()?;
@@ -4015,22 +4050,20 @@ pub async fn group_chat_regenerate(
         .recent_messages
         .retain(|m| m.turn_number < turn_number);
 
-    let (mut selected_character_id, mut selection_reasoning, allow_muted_selection) = if let Some(
-        forced_id,
-    ) =
+    let selection_result: Result<(String, Option<String>, bool), String> = if let Some(forced_id) =
         force_character_id
     {
-        (
+        Ok((
             forced_id,
             Some("User forced character selection".to_string()),
             true,
-        )
+        ))
     } else if let Some(speaker_id) = original_speaker.clone() {
-        (
+        Ok((
             speaker_id,
             Some("Reroll: kept original speaker".to_string()),
             true,
-        )
+        ))
     } else {
         let selection_result = tokio::select! {
             _ = &mut abort_rx => {
@@ -4044,18 +4077,27 @@ pub async fn group_chat_regenerate(
             selection = select_speaker_via_llm(&app, &context, &settings) => selection,
         };
         match selection_result {
-            Ok(selection) => (selection.character_id, selection.reasoning, false),
+            Ok(selection) => Ok((selection.character_id, selection.reasoning, false)),
             Err(err) => {
                 log_error(
                     &app,
                     "group_chat_regenerate",
                     format!("LLM selection failed: {}", err),
                 );
-                let fallback = selection::heuristic_select_speaker(&context)?;
-                (fallback.character_id, fallback.reasoning, false)
+                selection::heuristic_select_speaker(&context)
+                    .map(|fallback| (fallback.character_id, fallback.reasoning, false))
             }
         }
     };
+
+    let (mut selected_character_id, mut selection_reasoning, allow_muted_selection) =
+        match selection_result {
+            Ok(result) => result,
+            Err(err) => {
+                emit_group_chat_error_status(&app, &session_id, &err);
+                return Err(err);
+            }
+        };
 
     if !allow_muted_selection
         && context
@@ -4071,27 +4113,42 @@ pub async fn group_chat_regenerate(
                 selected_character_id
             ),
         );
-        let fallback = selection::heuristic_select_speaker(&context)?;
-        selected_character_id = fallback.character_id;
-        selection_reasoning = fallback.reasoning;
+        match selection::heuristic_select_speaker(&context) {
+            Ok(fallback) => {
+                selected_character_id = fallback.character_id;
+                selection_reasoning = fallback.reasoning;
+            }
+            Err(err) => {
+                emit_group_chat_error_status(&app, &session_id, &err);
+                return Err(err);
+            }
+        }
     }
 
     let character = context
         .characters
         .iter()
         .find(|c| c.id == selected_character_id)
-        .ok_or_else(|| "Character not found".to_string())?
-        .clone();
+        .cloned();
+    let character = match character {
+        Some(character) => character,
+        None => {
+            let err = "Character not found".to_string();
+            emit_group_chat_error_status(&app, &session_id, &err);
+            return Err(err);
+        }
+    };
 
-    let _ = app.emit(
-        "group_chat_status",
-        json!({
-            "sessionId": session_id,
-            "status": "character_selected",
-            "characterId": selected_character_id,
-            "characterName": character.name,
-        }),
+    let mut selected_extra = Map::new();
+    selected_extra.insert(
+        "characterId".to_string(),
+        Value::String(selected_character_id.clone()),
     );
+    selected_extra.insert(
+        "characterName".to_string(),
+        Value::String(character.name.clone()),
+    );
+    emit_group_chat_status(&app, &session_id, "character_selected", selected_extra);
 
     let response_result = generate_character_response(
         &app,
@@ -4104,7 +4161,13 @@ pub async fn group_chat_regenerate(
     )
     .await;
 
-    let (response_content, reasoning, message_usage, model_id_str) = response_result?;
+    let (response_content, reasoning, message_usage, model_id_str) = match response_result {
+        Ok(result) => result,
+        Err(err) => {
+            emit_group_chat_error_status(&app, &session_id, &err);
+            return Err(err);
+        }
+    };
 
     let conn = pool.get_connection()?;
     let now = now_ms();
@@ -4179,14 +4242,12 @@ pub async fn group_chat_regenerate(
         participation_stats,
     };
 
-    let _ = app.emit(
-        "group_chat_status",
-        json!({
-            "sessionId": session_id,
-            "status": "complete",
-            "characterId": &selected_character_id,
-        }),
+    let mut complete_extra = Map::new();
+    complete_extra.insert(
+        "characterId".to_string(),
+        Value::String(selected_character_id.clone()),
     );
+    emit_group_chat_status(&app, &session_id, "complete", complete_extra);
 
     serde_json::to_string(&response)
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
@@ -4206,13 +4267,7 @@ pub async fn group_chat_continue(
         format!("Continuing group chat session {}", session_id),
     );
 
-    let _ = app.emit(
-        "group_chat_status",
-        json!({
-            "sessionId": session_id,
-            "status": "selecting_character",
-        }),
-    );
+    emit_group_chat_status(&app, &session_id, "selecting_character", Map::new());
 
     let settings = load_settings(&app)?;
     let conn = pool.get_connection()?;
@@ -4223,27 +4278,21 @@ pub async fn group_chat_continue(
 
     let mut context = build_selection_context(&conn, &session_id, "")?;
 
-    let (mut selected_character_id, mut selection_reasoning, allow_muted_selection) = if let Some(
-        forced_id,
-    ) =
+    let selection_result: Result<(String, Option<String>, bool), String> = if let Some(forced_id) =
         force_character_id
     {
-        (
+        Ok((
             forced_id,
             Some("User requested specific character".to_string()),
             true,
-        )
+        ))
     } else {
         let method = context.session.speaker_selection_method.as_str();
         match method {
-            "heuristic" => {
-                let result = selection::heuristic_select_speaker(&context)?;
-                (result.character_id, result.reasoning, false)
-            }
-            "round_robin" => {
-                let result = selection::round_robin_select_speaker(&context)?;
-                (result.character_id, result.reasoning, false)
-            }
+            "heuristic" => selection::heuristic_select_speaker(&context)
+                .map(|result| (result.character_id, result.reasoning, false)),
+            "round_robin" => selection::round_robin_select_speaker(&context)
+                .map(|result| (result.character_id, result.reasoning, false)),
             _ => {
                 let selection_result = tokio::select! {
                     _ = &mut abort_rx => {
@@ -4257,20 +4306,29 @@ pub async fn group_chat_continue(
                     selection = select_speaker_via_llm(&app, &context, &settings) => selection,
                 };
                 match selection_result {
-                    Ok(selection) => (selection.character_id, selection.reasoning, false),
+                    Ok(selection) => Ok((selection.character_id, selection.reasoning, false)),
                     Err(err) => {
                         log_error(
                             &app,
                             "group_chat_continue",
                             format!("LLM selection failed: {}", err),
                         );
-                        let fallback = selection::heuristic_select_speaker(&context)?;
-                        (fallback.character_id, fallback.reasoning, false)
+                        selection::heuristic_select_speaker(&context)
+                            .map(|fallback| (fallback.character_id, fallback.reasoning, false))
                     }
                 }
             }
         }
     };
+
+    let (mut selected_character_id, mut selection_reasoning, allow_muted_selection) =
+        match selection_result {
+            Ok(result) => result,
+            Err(err) => {
+                emit_group_chat_error_status(&app, &session_id, &err);
+                return Err(err);
+            }
+        };
 
     if !allow_muted_selection
         && context
@@ -4286,27 +4344,42 @@ pub async fn group_chat_continue(
                 selected_character_id
             ),
         );
-        let fallback = selection::heuristic_select_speaker(&context)?;
-        selected_character_id = fallback.character_id;
-        selection_reasoning = fallback.reasoning;
+        match selection::heuristic_select_speaker(&context) {
+            Ok(fallback) => {
+                selected_character_id = fallback.character_id;
+                selection_reasoning = fallback.reasoning;
+            }
+            Err(err) => {
+                emit_group_chat_error_status(&app, &session_id, &err);
+                return Err(err);
+            }
+        }
     }
 
     let character = context
         .characters
         .iter()
         .find(|c| c.id == selected_character_id)
-        .ok_or_else(|| "Character not found".to_string())?
-        .clone();
+        .cloned();
+    let character = match character {
+        Some(character) => character,
+        None => {
+            let err = "Character not found".to_string();
+            emit_group_chat_error_status(&app, &session_id, &err);
+            return Err(err);
+        }
+    };
 
-    let _ = app.emit(
-        "group_chat_status",
-        json!({
-            "sessionId": session_id,
-            "status": "character_selected",
-            "characterId": selected_character_id,
-            "characterName": character.name,
-        }),
+    let mut selected_extra = Map::new();
+    selected_extra.insert(
+        "characterId".to_string(),
+        Value::String(selected_character_id.clone()),
     );
+    selected_extra.insert(
+        "characterName".to_string(),
+        Value::String(character.name.clone()),
+    );
+    emit_group_chat_status(&app, &session_id, "character_selected", selected_extra);
 
     let response_result = generate_character_response(
         &app,
@@ -4319,7 +4392,13 @@ pub async fn group_chat_continue(
     )
     .await;
 
-    let (response_content, reasoning, message_usage, model_id_str) = response_result?;
+    let (response_content, reasoning, message_usage, model_id_str) = match response_result {
+        Ok(result) => result,
+        Err(err) => {
+            emit_group_chat_error_status(&app, &session_id, &err);
+            return Err(err);
+        }
+    };
 
     let conn = pool.get_connection()?;
     let message = save_assistant_message(
@@ -4348,14 +4427,12 @@ pub async fn group_chat_continue(
         participation_stats,
     };
 
-    let _ = app.emit(
-        "group_chat_status",
-        json!({
-            "sessionId": session_id,
-            "status": "complete",
-            "characterId": &selected_character_id,
-        }),
+    let mut complete_extra = Map::new();
+    complete_extra.insert(
+        "characterId".to_string(),
+        Value::String(selected_character_id.clone()),
     );
+    emit_group_chat_status(&app, &session_id, "complete", complete_extra);
 
     serde_json::to_string(&response)
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))

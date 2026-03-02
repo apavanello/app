@@ -28,6 +28,7 @@ interface GroupChatCreateFormState {
   // Step 2: Group Setup
   groupName: string;
   chatType: "conversation" | "roleplay";
+  memoryType: "manual" | "dynamic";
   speakerSelectionMethod: "llm" | "heuristic" | "round_robin";
   backgroundImagePath: string;
 
@@ -48,6 +49,7 @@ type GroupChatCreateFormAction =
   | { type: "SET_LOADING_CHARACTERS"; payload: boolean }
   | { type: "SET_GROUP_NAME"; payload: string }
   | { type: "SET_CHAT_TYPE"; payload: "conversation" | "roleplay" }
+  | { type: "SET_MEMORY_TYPE"; payload: "manual" | "dynamic" }
   | { type: "SET_SPEAKER_SELECTION_METHOD"; payload: "llm" | "heuristic" | "round_robin" }
   | { type: "SET_BACKGROUND_IMAGE_PATH"; payload: string }
   | { type: "SET_SCENE_SOURCE"; payload: "none" | "custom" | "character" }
@@ -64,6 +66,7 @@ const initialState: GroupChatCreateFormState = {
   loadingCharacters: true,
   groupName: "",
   chatType: "conversation",
+  memoryType: "manual" as const,
   speakerSelectionMethod: "llm" as const,
   backgroundImagePath: "",
   sceneSource: "none",
@@ -97,6 +100,8 @@ function groupChatCreateFormReducer(
       return { ...state, groupName: action.payload, error: null };
     case "SET_CHAT_TYPE":
       return { ...state, chatType: action.payload, error: null };
+    case "SET_MEMORY_TYPE":
+      return { ...state, memoryType: action.payload, error: null };
     case "SET_SPEAKER_SELECTION_METHOD":
       return { ...state, speakerSelectionMethod: action.payload, error: null };
     case "SET_BACKGROUND_IMAGE_PATH":
@@ -200,6 +205,10 @@ export function useGroupChatCreateForm(options: UseGroupChatCreateFormOptions = 
     dispatch({ type: "SET_CHAT_TYPE", payload: value });
   }, []);
 
+  const setMemoryType = useCallback((value: "manual" | "dynamic") => {
+    dispatch({ type: "SET_MEMORY_TYPE", payload: value });
+  }, []);
+
   const setSpeakerSelectionMethod = useCallback(
     (value: "llm" | "heuristic" | "round_robin") => {
       dispatch({ type: "SET_SPEAKER_SELECTION_METHOD", payload: value });
@@ -269,7 +278,7 @@ export function useGroupChatCreateForm(options: UseGroupChatCreateFormOptions = 
         }
       }
 
-      const session = await storageBridge.groupSessionCreate(
+      const group = await storageBridge.groupCreate(
         name,
         Array.from(state.selectedIds),
         null,
@@ -278,9 +287,13 @@ export function useGroupChatCreateForm(options: UseGroupChatCreateFormOptions = 
         state.backgroundImagePath || null,
         state.speakerSelectionMethod,
       );
+      const session = await storageBridge.groupCreateSession(group.id);
+      if (state.memoryType !== "manual") {
+        await storageBridge.groupSessionUpdateMemoryType(session.id, state.memoryType);
+      }
       onCreated?.(session.id);
     } catch (err) {
-      console.error("Failed to create group session:", err);
+      console.error("Failed to create group character:", err);
       dispatch({ type: "SET_ERROR", payload: "Failed to create group chat" });
     } finally {
       dispatch({ type: "SET_CREATING", payload: false });
@@ -289,6 +302,7 @@ export function useGroupChatCreateForm(options: UseGroupChatCreateFormOptions = 
     state.selectedIds,
     state.groupName,
     state.chatType,
+    state.memoryType,
     state.speakerSelectionMethod,
     state.backgroundImagePath,
     state.sceneSource,
@@ -315,6 +329,7 @@ export function useGroupChatCreateForm(options: UseGroupChatCreateFormOptions = 
       toggleCharacter,
       setGroupName,
       setChatType,
+      setMemoryType,
       setSpeakerSelectionMethod,
       setBackgroundImagePath,
       setSceneSource,

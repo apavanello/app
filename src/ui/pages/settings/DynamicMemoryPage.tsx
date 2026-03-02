@@ -166,7 +166,6 @@ export function DynamicMemoryPage() {
   const [directAdvancedOpen, setDirectAdvancedOpen] = useState(false);
 
   // Group chat settings
-  const [groupEnabled, setGroupEnabled] = useState(false);
   const [groupSettings, setGroupSettings] = useState<DynamicMemorySettings>(
     DEFAULT_DYNAMIC_MEMORY_SETTINGS,
   );
@@ -204,7 +203,6 @@ export function DynamicMemoryPage() {
         setDirectSettings(dynamicSettings);
         setDirectPreset(detectPreset(dynamicSettings));
 
-        setGroupEnabled(groupDynamicSettings.enabled);
         setGroupSettings(groupDynamicSettings);
         setGroupPreset(detectPreset(groupDynamicSettings));
 
@@ -391,9 +389,9 @@ export function DynamicMemoryPage() {
     return null;
   }
 
-  const isAnyEnabled = enabled || groupEnabled;
+  const isAnyEnabled = enabled;
   const currentSettings = activeTab === "direct" ? directSettings : groupSettings;
-  const currentEnabled = activeTab === "direct" ? enabled : groupEnabled;
+  const currentEnabled = activeTab === "direct" ? enabled : true;
   const currentPreset = activeTab === "direct" ? directPreset : groupPreset;
   const advancedOpen = activeTab === "direct" ? directAdvancedOpen : groupAdvancedOpen;
   const setAdvancedOpen = activeTab === "direct" ? setDirectAdvancedOpen : setGroupAdvancedOpen;
@@ -434,16 +432,16 @@ export function DynamicMemoryPage() {
           </AnimatePresence>
 
           {/* Status Banner */}
-          {!enabled && !groupEnabled && (
+          {!enabled && (
             <div className={cn("rounded-xl border border-warning/20 bg-warning/5 p-3")}>
               <div className="flex items-start gap-2">
                 <Info className="h-4 w-4 text-warning shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <p className="text-xs font-medium text-warning">
-                    Dynamic memory is currently disabled
+                    Dynamic memory is disabled for direct chats
                   </p>
                   <p className="text-xs text-warning/60 mt-0.5">
-                    Enable it from the Advanced settings page to configure these options.
+                    Toggle the switch in the Direct Chats tab to enable it. Group chats use per-session memory mode.
                   </p>
                 </div>
               </div>
@@ -476,7 +474,6 @@ export function DynamicMemoryPage() {
             >
               <Users className="h-4 w-4" />
               Group Chats
-              {groupEnabled && <span className="ml-1 w-1.5 h-1.5 rounded-full bg-accent" />}
             </button>
           </div>
 
@@ -488,8 +485,48 @@ export function DynamicMemoryPage() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: activeTab === "direct" ? 10 : -10 }}
               transition={{ duration: 0.15 }}
-              className={cn("space-y-4", !currentEnabled && "opacity-50 pointer-events-none")}
+              className="space-y-4"
             >
+              {/* Enable Toggle (direct chats only) */}
+              {activeTab === "direct" && (
+              <div className={cn("rounded-xl border border-fg/10 bg-fg/5 px-4 py-3")}>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <span className="text-sm font-medium text-fg">
+                      Enable for Direct Chats
+                    </span>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const next = !enabled;
+                      setEnabled(next);
+                      await handleDirectSettingChange("enabled", next);
+                    }}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+                      enabled ? "bg-accent" : "bg-fg/20",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                        enabled ? "translate-x-6" : "translate-x-1",
+                      )}
+                    />
+                  </button>
+                </div>
+              </div>
+              )}
+
+              {activeTab === "group" && (
+              <div className={cn("rounded-xl border border-fg/8 bg-fg/3 px-4 py-3")}>
+                <p className="text-xs text-fg/50">
+                  Group chats use per-session memory mode. Enable dynamic memory in each group's settings. These settings control how dynamic memory behaves.
+                </p>
+              </div>
+              )}
+
+              <div className={cn(!currentEnabled && "opacity-50 pointer-events-none", "space-y-4")}>
               {/* Presets */}
               <div className="space-y-3">
                 <h3 className="text-[10px] font-semibold uppercase tracking-[0.25em] text-fg/35 px-1">
@@ -801,6 +838,7 @@ export function DynamicMemoryPage() {
                     </motion.div>
                   )}
                 </AnimatePresence>
+              </div>
               </div>
             </motion.div>
           </AnimatePresence>

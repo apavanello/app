@@ -311,7 +311,7 @@ export function ChatConversationPage() {
           }
         : null;
 
-      const groupSession = await storageBridge.groupSessionCreate(
+      const group = await storageBridge.groupCreate(
         `${character.name} Branch`,
         selectedCharacterIds,
         sourceSession.personaDisabled ? null : (sourceSession.personaId ?? null),
@@ -319,6 +319,7 @@ export function ChatConversationPage() {
         startingScene,
         character.backgroundImagePath ?? null,
       );
+      const groupSession = await storageBridge.groupCreateSession(group.id);
 
       const messagesToCopy = sourceSession.messages.slice(0, messageIndex + 1);
       for (const message of messagesToCopy) {

@@ -16,15 +16,20 @@ interface SettingsControllerOptions {
   layoutSession?: GroupSession | null;
   layoutCharacters?: Character[];
   layoutPersonas?: Persona[];
+  updateSession?: (session: GroupSession | null) => void;
 }
 
 export function useGroupChatSettingsController(
   groupSessionId?: string,
   options: SettingsControllerOptions = {},
 ) {
-  const { layoutSession, layoutCharacters = [], layoutPersonas = [] } = options;
+  const {
+    layoutSession,
+    layoutCharacters = [],
+    layoutPersonas = [],
+    updateSession,
+  } = options;
 
-  // Use layout session as initial value, maintain local copy for mutations
   const [session, setSession] = useState<GroupSession | null>(layoutSession ?? null);
   const characters = layoutCharacters;
   const personas = layoutPersonas;
@@ -110,13 +115,14 @@ export function useGroupChatSettingsController(
         session.personaId,
       );
       setSession(updated);
+      updateSession?.(updated);
       setUi({ editingName: false });
     } catch (err) {
       console.error("Failed to save name:", err);
     } finally {
       setUi({ saving: false });
     }
-  }, [session, ui.nameDraft, setUi]);
+  }, [session, ui.nameDraft, setUi, updateSession]);
 
   const handleChangePersona = useCallback(
     async (personaId: string | null) => {
@@ -131,6 +137,7 @@ export function useGroupChatSettingsController(
           personaId,
         );
         setSession(updated);
+        updateSession?.(updated);
         setUi({ showPersonaSelector: false });
       } catch (err) {
         console.error("Failed to change persona:", err);
@@ -138,7 +145,7 @@ export function useGroupChatSettingsController(
         setUi({ saving: false });
       }
     },
-    [session],
+    [session, setUi, updateSession],
   );
 
   const handleAddCharacter = useCallback(
@@ -149,6 +156,7 @@ export function useGroupChatSettingsController(
         setUi({ saving: true });
         const updated = await storageBridge.groupSessionAddCharacter(session.id, characterId);
         setSession(updated);
+        updateSession?.(updated);
         setUi({ showAddCharacter: false });
       } catch (err) {
         console.error("Failed to add character:", err);
@@ -156,7 +164,7 @@ export function useGroupChatSettingsController(
         setUi({ saving: false });
       }
     },
-    [session, setUi],
+    [session, setUi, updateSession],
   );
 
   const handleRemoveCharacter = useCallback(
@@ -172,6 +180,7 @@ export function useGroupChatSettingsController(
         setUi({ saving: true });
         const updated = await storageBridge.groupSessionRemoveCharacter(session.id, characterId);
         setSession(updated);
+        updateSession?.(updated);
         setUi({ showRemoveConfirm: null });
       } catch (err) {
         console.error("Failed to remove character:", err);
@@ -179,7 +188,7 @@ export function useGroupChatSettingsController(
         setUi({ saving: false });
       }
     },
-    [session, setUi],
+    [session, setUi, updateSession],
   );
 
   const handleChangeSpeakerSelectionMethod = useCallback(
@@ -192,13 +201,14 @@ export function useGroupChatSettingsController(
           method,
         );
         setSession(updated);
+        updateSession?.(updated);
       } catch (err) {
         console.error("Failed to update speaker selection method:", err);
       } finally {
         setUi({ saving: false });
       }
     },
-    [session, setUi],
+    [session, setUi, updateSession],
   );
 
   const handleSetCharacterMuted = useCallback(
@@ -223,13 +233,36 @@ export function useGroupChatSettingsController(
           Array.from(nextMuted),
         );
         setSession(updated);
+        updateSession?.(updated);
       } catch (err) {
         console.error("Failed to update muted characters:", err);
       } finally {
         setUi({ saving: false });
       }
     },
-    [session, setUi],
+    [session, setUi, updateSession],
+  );
+
+  const handleUpdateBackgroundImage = useCallback(
+    async (backgroundImagePath: string | null) => {
+      if (!session) return;
+
+      try {
+        setUi({ saving: true });
+        const updated = await storageBridge.groupSessionUpdateBackgroundImage(
+          session.id,
+          backgroundImagePath,
+        );
+        setSession(updated);
+        updateSession?.(updated);
+      } catch (err) {
+        console.error("Failed to update background image:", err);
+        throw err;
+      } finally {
+        setUi({ saving: false });
+      }
+    },
+    [session, setUi, updateSession],
   );
 
   const getParticipationPercent = useCallback(
@@ -280,6 +313,7 @@ export function useGroupChatSettingsController(
     handleRemoveCharacter,
     handleChangeSpeakerSelectionMethod,
     handleSetCharacterMuted,
+    handleUpdateBackgroundImage,
     mutedCharacterIds,
     getParticipationPercent,
   } as const;

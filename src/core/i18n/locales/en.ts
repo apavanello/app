@@ -651,6 +651,10 @@ export const enMessages = {
       noGroupChatsYet: "No group chats yet",
       noGroupChatsDesc:
         "Create your first group chat from the + button below to have conversations with multiple characters at once",
+      newChat: "New Chat",
+      openChat: "Open Chat",
+      chatSettings: "Chat Settings",
+      sessionCount: "{{count}} chat(s)",
     },
     create: {
       invalidPackage: "This package is not a group chat package.",

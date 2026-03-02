@@ -658,6 +658,10 @@ export const ruMessages: DeepPartialMessageTree<LocaleMessages> = {
       noGroupChatsYet: "Групповых чатов пока нет",
       noGroupChatsDesc:
         "Создайте первый групповой чат с помощью кнопки + ниже, чтобы общаться с несколькими персонажами одновременно",
+      newChat: "Новый чат",
+      openChat: "Открыть чат",
+      chatSettings: "Настройки чата",
+      sessionCount: "{{count}} чатов",
     },
     create: {
       invalidPackage: "Этот пакет не является пакетом группового чата.",

@@ -660,6 +660,10 @@ export const plMessages: DeepPartialMessageTree<LocaleMessages> = {
       noGroupChatsYet: "Brak czatów grupowych",
       noGroupChatsDesc:
         "Utwórz swój pierwszy czat grupowy przyciskiem + poniżej, aby rozmawiać z wieloma postaciami naraz",
+      newChat: "Nowy czat",
+      openChat: "Otwórz czat",
+      chatSettings: "Ustawienia czatu",
+      sessionCount: "{{count}} czatów",
     },
     create: {
       invalidPackage: "Ten pakiet nie jest pakietem czatu grupowego.",

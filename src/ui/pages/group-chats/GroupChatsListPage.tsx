@@ -1,4 +1,4 @@
-import { Trash2, Settings } from "lucide-react";
+import { MessageCircle, Trash2, Settings } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { useI18n } from "../../../core/i18n/context";
@@ -15,19 +15,30 @@ export function GroupChatsListPage() {
   const { t } = useI18n();
   const navigate = useNavigate();
   const {
-    groupSessions,
+    groups,
+    sessions,
     characters,
     loading,
-    selectedSession,
+    selectedGroup,
     showDeleteConfirm,
     deleting,
-    setSelectedSession,
+    expandedGroupId,
+    setSelectedGroup,
     setShowDeleteConfirm,
     handleDelete,
+    handleToggleExpand,
+    handleNewChat,
+    selectedSession,
+    setSelectedSession,
+    showSessionDeleteConfirm,
+    setShowSessionDeleteConfirm,
+    deletingSession,
+    handleSessionDelete,
   } = useGroupChatsListController();
 
-  const openGroupChat = (session: { id: string }) => {
-    navigate(Routes.groupChat(session.id));
+  const openGroupSettings = (item: { id: string }) => {
+    navigate(Routes.groupSettings(item.id));
+    setSelectedGroup(null);
   };
 
   return (
@@ -35,12 +46,23 @@ export function GroupChatsListPage() {
       <main className="flex-1 overflow-y-auto px-1 lg:px-8 pt-4 mx-auto w-full max-w-md lg:max-w-none">
         {loading ? (
           <GroupSessionSkeleton />
-        ) : groupSessions.length ? (
+        ) : groups.length ? (
           <GroupSessionList
-            sessions={groupSessions}
+            groups={groups}
+            allSessions={sessions}
             characters={characters}
-            onSelect={openGroupChat}
-            onLongPress={setSelectedSession}
+            expandedGroupId={expandedGroupId}
+            onToggleExpand={(item) => handleToggleExpand(item.id)}
+            onSelectSession={(session) => navigate(Routes.groupChat(session.id))}
+            onNewChat={async (item) => {
+              const session = await handleNewChat(item.id);
+              if (session) navigate(Routes.groupChat(session.id));
+            }}
+            onLongPress={(item) => {
+              const selected = groups.find((group) => group.id === item.id);
+              if (selected) setSelectedGroup(selected);
+            }}
+            onSessionLongPress={(session) => setSelectedSession(session)}
           />
         ) : (
           <EmptyState />
@@ -48,18 +70,15 @@ export function GroupChatsListPage() {
       </main>
 
       <BottomMenu
-        isOpen={Boolean(selectedSession)}
-        onClose={() => setSelectedSession(null)}
+        isOpen={Boolean(selectedGroup)}
+        onClose={() => setSelectedGroup(null)}
         includeExitIcon={false}
-        title={selectedSession?.name || ""}
+        title={selectedGroup?.name || ""}
       >
-        {selectedSession && (
+        {selectedGroup && (
           <div className="space-y-2">
             <button
-              onClick={() => {
-                navigate(Routes.groupChatSettings(selectedSession.id));
-                setSelectedSession(null);
-              }}
+              onClick={() => openGroupSettings(selectedGroup)}
               className="flex w-full items-center gap-3 rounded-xl border border-fg/10 bg-fg/5 px-4 py-3 text-left transition hover:border-fg/20 hover:bg-fg/10"
             >
               <div className="flex h-8 w-8 items-center justify-center rounded-full border border-fg/10 bg-fg/10">
@@ -90,7 +109,9 @@ export function GroupChatsListPage() {
       >
         <div className="space-y-4">
           <p className="text-sm text-fg/70">
-            {t("groupChats.list.deleteConfirmMessage", { name: selectedSession?.name ?? "" })}
+            {t("groupChats.list.deleteConfirmMessage", {
+              name: selectedGroup?.name ?? "",
+            })}
           </p>
           <div className="flex gap-3">
             <button
@@ -106,6 +127,81 @@ export function GroupChatsListPage() {
               className="flex-1 rounded-xl border border-danger/30 bg-danger/20 py-3 text-sm font-medium text-danger transition hover:bg-danger/30 disabled:opacity-50"
             >
               {deleting ? t("common.buttons.deleting") : t("common.buttons.delete")}
+            </button>
+          </div>
+        </div>
+      </BottomMenu>
+
+      <BottomMenu
+        isOpen={Boolean(selectedSession) && !showSessionDeleteConfirm}
+        onClose={() => setSelectedSession(null)}
+        includeExitIcon={false}
+        title={selectedSession?.name || ""}
+      >
+        {selectedSession && (
+          <div className="space-y-2">
+            <button
+              onClick={() => {
+                navigate(Routes.groupChatSettings(selectedSession.id));
+                setSelectedSession(null);
+              }}
+              className="flex w-full items-center gap-3 rounded-xl border border-fg/10 bg-fg/5 px-4 py-3 text-left transition hover:border-fg/20 hover:bg-fg/10"
+            >
+              <div className="flex h-8 w-8 items-center justify-center rounded-full border border-fg/10 bg-fg/10">
+                <Settings className="h-4 w-4 text-fg/70" />
+              </div>
+              <span className="text-sm font-medium text-fg">{t("groupChats.list.chatSettings")}</span>
+            </button>
+
+            <button
+              onClick={() => {
+                navigate(Routes.groupChat(selectedSession.id));
+                setSelectedSession(null);
+              }}
+              className="flex w-full items-center gap-3 rounded-xl border border-fg/10 bg-fg/5 px-4 py-3 text-left transition hover:border-fg/20 hover:bg-fg/10"
+            >
+              <div className="flex h-8 w-8 items-center justify-center rounded-full border border-fg/10 bg-fg/10">
+                <MessageCircle className="h-4 w-4 text-fg/70" />
+              </div>
+              <span className="text-sm font-medium text-fg">{t("groupChats.list.openChat")}</span>
+            </button>
+
+            <button
+              onClick={() => setShowSessionDeleteConfirm(true)}
+              className="flex w-full items-center gap-3 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-left transition hover:border-danger/50 hover:bg-danger/20"
+            >
+              <div className="flex h-8 w-8 items-center justify-center rounded-full border border-danger/30 bg-danger/20">
+                <Trash2 className="h-4 w-4 text-danger" />
+              </div>
+              <span className="text-sm font-medium text-danger">{t("groupChats.history.deleteSessionButton")}</span>
+            </button>
+          </div>
+        )}
+      </BottomMenu>
+
+      <BottomMenu
+        isOpen={showSessionDeleteConfirm}
+        onClose={() => setShowSessionDeleteConfirm(false)}
+        title={t("groupChats.history.deleteSessionTitle")}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-fg/70">
+            {t("groupChats.history.deleteSessionDesc")}
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowSessionDeleteConfirm(false)}
+              disabled={deletingSession}
+              className="flex-1 rounded-xl border border-fg/10 bg-fg/5 py-3 text-sm font-medium text-fg transition hover:border-fg/20 hover:bg-fg/10 disabled:opacity-50"
+            >
+              {t("common.buttons.cancel")}
+            </button>
+            <button
+              onClick={handleSessionDelete}
+              disabled={deletingSession}
+              className="flex-1 rounded-xl border border-danger/30 bg-danger/20 py-3 text-sm font-medium text-danger transition hover:bg-danger/30 disabled:opacity-50"
+            >
+              {deletingSession ? t("common.buttons.deleting") : t("common.buttons.delete")}
             </button>
           </div>
         </div>

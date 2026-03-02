@@ -68,6 +68,7 @@ import {
   GroupChatCreatePage,
   GroupChatLayout,
   GroupChatPage,
+  GroupSettingsPage,
   GroupChatSettingsPage,
   GroupChatHistoryPage,
   GroupChatMemoriesPage,
@@ -708,6 +709,7 @@ function AppContent() {
               <Route path="/group-chats" element={<GroupChatsListPage />} />
               <Route path="/group-chats/history" element={<GroupChatHistoryPage />} />
               <Route path="/group-chats/new" element={<GroupChatCreatePage />} />
+              <Route path="/group-chats/groups/:groupId/settings" element={<GroupSettingsPage />} />
               <Route path="/group-chats/:groupSessionId" element={<GroupChatLayout />}>
                 <Route index element={<GroupChatPage />} />
                 <Route path="settings" element={<GroupChatSettingsPage />} />

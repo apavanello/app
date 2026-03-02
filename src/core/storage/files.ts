@@ -449,6 +449,74 @@ export const storageBridge = {
   // Group Chat Storage Bridge
   // ============================================================================
 
+  // Groups (group chat configurations)
+  groupsList: () => invoke<string>("groups_list").then((s) => JSON.parse(s) as any[]),
+  groupCreate: (
+    name: string,
+    characterIds: string[],
+    personaId?: string | null,
+    chatType?: "conversation" | "roleplay",
+    startingScene?: any | null,
+    backgroundImagePath?: string | null,
+    speakerSelectionMethod?: "llm" | "heuristic" | "round_robin" | null,
+  ) =>
+    invoke<string>("group_create", {
+      name,
+      characterIdsJson: JSON.stringify(characterIds),
+      personaId: personaId ?? null,
+      chatType: chatType ?? "conversation",
+      startingSceneJson: startingScene ? JSON.stringify(startingScene) : null,
+      backgroundImagePath: backgroundImagePath ?? null,
+      speakerSelectionMethod: speakerSelectionMethod ?? "llm",
+    }).then((s) => JSON.parse(s)),
+  groupGet: (id: string) =>
+    invoke<string | null>("group_get", { id }).then((s) =>
+      typeof s === "string" ? JSON.parse(s) : null,
+    ),
+  groupUpdate: (
+    id: string,
+    name: string,
+    characterIds: string[],
+    personaId?: string | null,
+    chatType?: "conversation" | "roleplay",
+    startingScene?: any | null,
+    backgroundImagePath?: string | null,
+    speakerSelectionMethod?: "llm" | "heuristic" | "round_robin" | null,
+    mutedCharacterIds?: string[] | null,
+  ) =>
+    invoke<string>("group_update", {
+      id,
+      name,
+      characterIdsJson: JSON.stringify(characterIds),
+      mutedCharacterIdsJson: mutedCharacterIds ? JSON.stringify(mutedCharacterIds) : null,
+      personaId: personaId ?? null,
+      chatType: chatType ?? "conversation",
+      startingSceneJson: startingScene ? JSON.stringify(startingScene) : null,
+      backgroundImagePath: backgroundImagePath ?? null,
+      speakerSelectionMethod: speakerSelectionMethod ?? "llm",
+    }).then((s) => JSON.parse(s)),
+  groupDelete: (id: string) => invoke("group_delete", { id }) as Promise<void>,
+  groupUpdateName: (id: string, name: string) =>
+    invoke("group_update_name", { id, name }) as Promise<void>,
+  groupUpdatePersona: (id: string, personaId: string | null) =>
+    invoke("group_update_persona", { id, personaId }) as Promise<void>,
+  groupUpdateSpeakerSelectionMethod: (id: string, speakerSelectionMethod: "llm" | "heuristic" | "round_robin") =>
+    invoke("group_update_speaker_selection_method", { id, speakerSelectionMethod }) as Promise<void>,
+  groupUpdateMemoryType: (id: string, memoryType: "manual" | "dynamic") =>
+    invoke("group_update_memory_type", { id, memoryType }) as Promise<void>,
+  groupUpdateBackgroundImage: (id: string, backgroundImagePath: string | null) =>
+    invoke("group_update_background_image", { id, backgroundImagePath }) as Promise<void>,
+  groupUpdateCharacterIds: (id: string, characterIds: string[]) =>
+    invoke("group_update_character_ids", { id, characterIdsJson: JSON.stringify(characterIds) }) as Promise<void>,
+  groupUpdateMutedCharacterIds: (id: string, mutedCharacterIds: string[]) =>
+    invoke("group_update_muted_character_ids", { id, mutedCharacterIdsJson: JSON.stringify(mutedCharacterIds) }) as Promise<void>,
+  groupUpdateStartingScene: (id: string, startingScene: any | null) =>
+    invoke("group_update_starting_scene", { id, startingSceneJson: startingScene ? JSON.stringify(startingScene) : null }) as Promise<void>,
+  groupCreateSession: (groupId: string) =>
+    invoke<string>("group_create_session", { groupId }).then((s) =>
+      JSON.parse(s),
+    ),
+
   // Group Sessions
   groupSessionsList: () =>
     invoke<string>("group_sessions_list").then((s) => JSON.parse(s) as any[]),
@@ -536,6 +604,11 @@ export const storageBridge = {
     invoke<string>("group_session_update_chat_type", {
       sessionId,
       chatType,
+    }).then((s) => JSON.parse(s)),
+  groupSessionUpdateMemoryType: (sessionId: string, memoryType: "manual" | "dynamic") =>
+    invoke<string>("group_session_update_memory_type", {
+      sessionId,
+      memoryType,
     }).then((s) => JSON.parse(s)),
   groupSessionUpdateSpeakerSelectionMethod: (
     sessionId: string,

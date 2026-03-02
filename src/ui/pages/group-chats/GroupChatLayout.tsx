@@ -30,6 +30,7 @@ export interface GroupChatLayoutContext {
   theme: ThemeColors;
   chatAppearance: ChatAppearanceSettings;
   reloadSession: () => void;
+  updateSession: (session: GroupSession | null) => void;
 }
 
 export function useGroupChatLayoutContext() {
@@ -100,6 +101,10 @@ export function GroupChatLayout() {
     setLoadCount((c) => c + 1);
   }, []);
 
+  const updateSession = useCallback((nextSession: GroupSession | null) => {
+    setSession(nextSession);
+  }, []);
+
   const backgroundImageData = useImageData(session?.backgroundImagePath);
 
   useEffect(() => {
@@ -141,6 +146,7 @@ export function GroupChatLayout() {
     theme,
     chatAppearance,
     reloadSession,
+    updateSession,
   };
 
   return (

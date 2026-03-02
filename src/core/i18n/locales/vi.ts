@@ -656,6 +656,10 @@ export const viMessages: DeepPartialMessageTree<LocaleMessages> = {
       noGroupChatsYet: "Chưa có nhóm trò chuyện nào",
       noGroupChatsDesc:
         "Tạo nhóm trò chuyện đầu tiên từ nút + bên dưới để trò chuyện với nhiều nhân vật cùng lúc",
+      newChat: "Cuộc trò chuyện mới",
+      openChat: "Mở cuộc trò chuyện",
+      chatSettings: "Cài đặt cuộc trò chuyện",
+      sessionCount: "{{count}} cuộc trò chuyện",
     },
     create: {
       invalidPackage: "Gói này không phải là gói nhóm trò chuyện.",

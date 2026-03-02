@@ -1,52 +1,204 @@
-import { useEffect, useState, memo, useRef } from "react";
-import { Rocket, Users } from "lucide-react";
-import { motion } from "framer-motion";
+import { useEffect, useRef, useState, memo } from "react";
+import { ChevronRight, MessageCircle, Plus, Rocket, Users } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 import { useI18n } from "../../../../../core/i18n/context";
-import type { GroupSessionPreview, Character } from "../../../../../core/storage/schemas";
+import type { GroupCharacterPreview, GroupSessionPreview, Character } from "../../../../../core/storage/schemas";
+
+type GroupListItem = Pick<
+  GroupSessionPreview | GroupCharacterPreview,
+  "id" | "name" | "characterIds"
+>;
 import { typography, radius, spacing, interactive, cn } from "../../../../design-tokens";
 import { useAvatar } from "../../../../hooks/useAvatar";
 import { useRocketEasterEgg } from "../../../../hooks/useRocketEasterEgg";
 import { AvatarImage } from "../../../../components/AvatarImage";
+import { formatTimeAgo } from "../../utils/formatTimeAgo";
 
 export function GroupSessionList({
-  sessions,
+  groups,
+  allSessions,
   characters,
-  onSelect,
+  expandedGroupId,
+  onToggleExpand,
+  onSelectSession,
+  onNewChat,
   onLongPress,
+  onSessionLongPress,
 }: {
-  sessions: GroupSessionPreview[];
+  groups: GroupListItem[];
+  allSessions: GroupSessionPreview[];
   characters: Character[];
-  onSelect: (session: GroupSessionPreview) => void;
-  onLongPress: (session: GroupSessionPreview) => void;
+  expandedGroupId: string | null;
+  onToggleExpand: (group: GroupListItem) => void;
+  onSelectSession: (session: GroupSessionPreview) => void;
+  onNewChat: (group: GroupListItem) => void;
+  onLongPress: (group: GroupListItem) => void;
+  onSessionLongPress: (session: GroupSessionPreview) => void;
 }) {
   const [visibleCount, setVisibleCount] = useState(10);
 
   useEffect(() => {
-    if (visibleCount < sessions.length) {
+    if (visibleCount < groups.length) {
       const timer = setTimeout(() => {
-        setVisibleCount((prev) => Math.min(prev + 10, sessions.length));
+        setVisibleCount((prev) => Math.min(prev + 10, groups.length));
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [visibleCount, sessions.length]);
+  }, [visibleCount, groups.length]);
 
   useEffect(() => {
     setVisibleCount(10);
-  }, [sessions]);
+  }, [groups]);
 
   return (
     <div className="space-y-2 lg:space-y-3 pb-24">
-      {sessions.slice(0, visibleCount).map((session) => (
-        <GroupSessionCard
-          key={session.id}
-          session={session}
-          characters={characters}
-          onSelect={onSelect}
-          onLongPress={onLongPress}
-        />
-      ))}
+      {groups.slice(0, visibleCount).map((group) => {
+        const isExpanded = expandedGroupId === group.id;
+        const groupSessions = allSessions
+          .filter((s) => s.groupCharacterId === group.id)
+          .sort((a, b) => b.updatedAt - a.updatedAt);
+
+        return (
+          <div key={group.id}>
+            <GroupSessionCard
+              session={group}
+              characters={characters}
+              isExpanded={isExpanded}
+              onToggleExpand={onToggleExpand}
+              onLongPress={onLongPress}
+            />
+            <AnimatePresence>
+              {isExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="overflow-hidden"
+                >
+                  <div className="ml-4 mt-2 space-y-1.5">
+                    {groupSessions.map((session) => (
+                      <SessionSubItem
+                        key={session.id}
+                        session={session}
+                        onSelect={onSelectSession}
+                        onLongPress={onSessionLongPress}
+                      />
+                    ))}
+                    <NewChatRow onClick={() => onNewChat(group)} />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        );
+      })}
     </div>
+  );
+}
+
+function SessionSubItem({
+  session,
+  onSelect,
+  onLongPress,
+}: {
+  session: GroupSessionPreview;
+  onSelect: (session: GroupSessionPreview) => void;
+  onLongPress: (session: GroupSessionPreview) => void;
+}) {
+  const longPressTimer = useRef<number | null>(null);
+  const isLongPress = useRef(false);
+
+  const handlePointerDown = () => {
+    isLongPress.current = false;
+    longPressTimer.current = window.setTimeout(() => {
+      isLongPress.current = true;
+      onLongPress(session);
+    }, 500);
+  };
+
+  const handlePointerUp = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  const handlePointerLeave = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  const handleClick = () => {
+    if (isLongPress.current) {
+      isLongPress.current = false;
+      return;
+    }
+    onSelect(session);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    onLongPress(session);
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      onContextMenu={handleContextMenu}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerLeave}
+      className={cn(
+        "flex w-full items-center gap-3 p-3 text-left",
+        "rounded-xl",
+        interactive.transition.default,
+        "border border-fg/10 bg-fg/3 hover:bg-fg/8",
+      )}
+    >
+      <MessageCircle className="h-4 w-4 shrink-0 text-fg/40" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className={cn(typography.caption.size, "font-medium text-fg truncate")}>
+            {session.name}
+          </span>
+          <span className={cn(typography.caption.size, "shrink-0 text-fg/40")}>
+            {formatTimeAgo(session.updatedAt)}
+          </span>
+        </div>
+        {session.lastMessage && (
+          <p className={cn(typography.caption.size, "text-fg/40 truncate mt-0.5")}>
+            {session.lastMessage}
+          </p>
+        )}
+      </div>
+      <span className={cn(typography.caption.size, "shrink-0 text-fg/30")}>
+        {session.messageCount}
+      </span>
+    </button>
+  );
+}
+
+function NewChatRow({ onClick }: { onClick: () => void }) {
+  const { t } = useI18n();
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center gap-3 p-3 text-left",
+        "rounded-xl",
+        interactive.transition.default,
+        "border border-dashed border-fg/15 hover:border-accent/40 hover:bg-accent/5",
+      )}
+    >
+      <Plus className="h-4 w-4 text-fg/40" />
+      <span className={cn(typography.caption.size, "font-medium text-fg/60")}>
+        {t("groupChats.list.newChat")}
+      </span>
+    </button>
   );
 }
 
@@ -138,13 +290,15 @@ const GroupSessionCard = memo(
   ({
     session,
     characters,
-    onSelect,
+    isExpanded,
+    onToggleExpand,
     onLongPress,
   }: {
-    session: GroupSessionPreview;
+    session: GroupListItem;
     characters: Character[];
-    onSelect: (session: GroupSessionPreview) => void;
-    onLongPress: (session: GroupSessionPreview) => void;
+    isExpanded: boolean;
+    onToggleExpand: (session: GroupListItem) => void;
+    onLongPress: (session: GroupListItem) => void;
   }) => {
     const longPressTimer = useRef<number | null>(null);
     const isLongPress = useRef(false);
@@ -185,7 +339,7 @@ const GroupSessionCard = memo(
         isLongPress.current = false;
         return;
       }
-      onSelect(session);
+      onToggleExpand(session);
     };
 
     const handleContextMenu = (e: React.MouseEvent) => {
@@ -247,6 +401,13 @@ const GroupSessionCard = memo(
             {characterSummary}
           </p>
         </div>
+
+        <motion.div
+          animate={{ rotate: isExpanded ? 90 : 0 }}
+          transition={{ duration: 0.15 }}
+        >
+          <ChevronRight className="h-4 w-4 text-fg/30" />
+        </motion.div>
       </motion.button>
     );
   },

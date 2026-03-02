@@ -671,6 +671,10 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
       noGroupChatsYet: "Wala pang mga group chat",
       noGroupChatsDesc:
         "Gumawa ng iyong unang group chat mula sa + button sa ibaba para makipag-usap sa maraming karakter nang sabay-sabay",
+      newChat: "Bagong usapan",
+      openChat: "Buksan ang usapan",
+      chatSettings: "Mga setting ng usapan",
+      sessionCount: "{{count}} usapan",
     },
     create: {
       invalidPackage: "Ang package na ito ay hindi isang group chat package.",

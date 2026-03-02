@@ -7,7 +7,7 @@ use crate::storage_manager::{settings::storage_read_settings, settings::storage_
 use crate::utils::log_info;
 
 /// Current migration version
-pub const CURRENT_MIGRATION_VERSION: u32 = 41;
+pub const CURRENT_MIGRATION_VERSION: u32 = 44;
 
 pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
     log_info(app, "migrations", "Starting migration check");
@@ -15,18 +15,6 @@ pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
     let current_version = get_migration_version(app)?;
 
     if current_version >= CURRENT_MIGRATION_VERSION {
-        migrate_v29_to_v30(app)?;
-        migrate_v30_to_v31(app)?;
-        migrate_v31_to_v32(app)?;
-        migrate_v32_to_v33(app)?;
-        migrate_v33_to_v34(app)?;
-        migrate_v34_to_v35(app)?;
-        migrate_v35_to_v36(app)?;
-        migrate_v36_to_v37(app)?;
-        migrate_v37_to_v38(app)?;
-        migrate_v38_to_v39(app)?;
-        migrate_v39_to_v40(app)?;
-        migrate_v40_to_v41(app)?;
         log_info(
             app,
             "migrations",
@@ -459,6 +447,36 @@ pub fn run_migrations(app: &AppHandle) -> Result<(), String> {
         );
         migrate_v40_to_v41(app)?;
         version = 41;
+    }
+
+    if version < 42 {
+        log_info(
+            app,
+            "migrations",
+            "Running migration v41 -> v42: Add group character configs and link sessions",
+        );
+        migrate_v41_to_v42(app)?;
+        version = 42;
+    }
+
+    if version < 43 {
+        log_info(
+            app,
+            "migrations",
+            "Running migration v42 -> v43: Add memory_type to group_sessions and group_characters",
+        );
+        migrate_v42_to_v43(app)?;
+        version = 43;
+    }
+
+    if version < 44 {
+        log_info(
+            app,
+            "migrations",
+            "Running migration v43 -> v44: Ensure memory_type on group_characters",
+        );
+        migrate_v43_to_v44(app)?;
+        version = 44;
     }
 
     // Update the stored version
@@ -2565,6 +2583,103 @@ fn migrate_v40_to_v41(app: &AppHandle) -> Result<(), String> {
     let conn = crate::storage_manager::db::open_db(app)?;
     let _ = conn.execute(
         "ALTER TABLE group_sessions ADD COLUMN muted_character_ids TEXT NOT NULL DEFAULT '[]'",
+        [],
+    );
+    Ok(())
+}
+
+fn migrate_v41_to_v42(app: &AppHandle) -> Result<(), String> {
+    let conn = crate::storage_manager::db::open_db(app)?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS group_characters (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          character_ids TEXT NOT NULL DEFAULT '[]',
+          muted_character_ids TEXT NOT NULL DEFAULT '[]',
+          persona_id TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          archived INTEGER NOT NULL DEFAULT 0,
+          chat_type TEXT NOT NULL DEFAULT 'conversation',
+          starting_scene TEXT,
+          background_image_path TEXT,
+          speaker_selection_method TEXT NOT NULL DEFAULT 'llm',
+          FOREIGN KEY(persona_id) REFERENCES personas(id) ON DELETE SET NULL
+        )",
+        [],
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    let _ = conn.execute(
+        "ALTER TABLE group_sessions ADD COLUMN group_character_id TEXT",
+        [],
+    );
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_group_characters_updated ON group_characters(updated_at)",
+        [],
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_group_sessions_group_character ON group_sessions(group_character_id)",
+        [],
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    conn.execute(
+        "INSERT INTO group_characters (
+            id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at,
+            archived, chat_type, starting_scene, background_image_path, speaker_selection_method
+         )
+         SELECT
+            gs.id,
+            gs.name,
+            gs.character_ids,
+            COALESCE(gs.muted_character_ids, '[]'),
+            gs.persona_id,
+            gs.created_at,
+            gs.updated_at,
+            COALESCE(gs.archived, 0),
+            COALESCE(gs.chat_type, 'conversation'),
+            gs.starting_scene,
+            gs.background_image_path,
+            COALESCE(gs.speaker_selection_method, 'llm')
+         FROM group_sessions gs
+         WHERE gs.group_character_id IS NULL
+           AND NOT EXISTS (SELECT 1 FROM group_characters gc WHERE gc.id = gs.id)",
+        [],
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    conn.execute(
+        "UPDATE group_sessions
+         SET group_character_id = id
+         WHERE group_character_id IS NULL",
+        [],
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    Ok(())
+}
+
+fn migrate_v42_to_v43(app: &AppHandle) -> Result<(), String> {
+    let conn = crate::storage_manager::db::open_db(app)?;
+    let _ = conn.execute(
+        "ALTER TABLE group_sessions ADD COLUMN memory_type TEXT NOT NULL DEFAULT 'manual'",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE group_characters ADD COLUMN memory_type TEXT NOT NULL DEFAULT 'manual'",
+        [],
+    );
+    Ok(())
+}
+
+fn migrate_v43_to_v44(app: &AppHandle) -> Result<(), String> {
+    let conn = crate::storage_manager::db::open_db(app)?;
+    let _ = conn.execute(
+        "ALTER TABLE group_characters ADD COLUMN memory_type TEXT NOT NULL DEFAULT 'manual'",
         [],
     );
     Ok(())

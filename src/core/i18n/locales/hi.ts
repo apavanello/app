@@ -657,6 +657,10 @@ export const hiMessages: DeepPartialMessageTree<LocaleMessages> = {
       noGroupChatsYet: "अभी तक कोई ग्रुप चैट नहीं",
       noGroupChatsDesc:
         "एक साथ कई कैरेक्टर्स के साथ बातचीत करने के लिए नीचे + बटन से अपना पहला ग्रुप चैट बनाएँ",
+      newChat: "नई चैट",
+      openChat: "चैट खोलें",
+      chatSettings: "चैट सेटिंग्स",
+      sessionCount: "{{count}} चैट",
     },
     create: {
       invalidPackage: "यह पैकेज ग्रुप चैट पैकेज नहीं है।",

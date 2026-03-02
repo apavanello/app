@@ -49,7 +49,7 @@ export function GroupChatSettingsPage() {
     personas: layoutPersonas,
     sessionLoading,
     backgroundImageData,
-    reloadSession,
+    updateSession,
   } = useGroupChatLayoutContext();
 
   const {
@@ -72,6 +72,7 @@ export function GroupChatSettingsPage() {
     handleRemoveCharacter,
     handleChangeSpeakerSelectionMethod,
     handleSetCharacterMuted,
+    handleUpdateBackgroundImage,
     mutedCharacterIds,
     getParticipationPercent,
     participationStats,
@@ -79,6 +80,7 @@ export function GroupChatSettingsPage() {
     layoutSession,
     layoutCharacters,
     layoutPersonas,
+    updateSession,
   });
   const [backgroundImagePath, setBackgroundImagePath] = useState(
     session?.backgroundImagePath || "",
@@ -120,8 +122,7 @@ export function GroupChatSettingsPage() {
     void processBackgroundImage(file)
       .then(async (dataUrl: string) => {
         setBackgroundImagePath(dataUrl);
-        await storageBridge.groupSessionUpdateBackgroundImage(groupSessionId, dataUrl);
-        reloadSession();
+        await handleUpdateBackgroundImage(dataUrl);
       })
       .catch((error: unknown) => {
         console.warn("Failed to process background image", error);
@@ -137,8 +138,7 @@ export function GroupChatSettingsPage() {
     setSavingBackground(true);
     try {
       setBackgroundImagePath("");
-      await storageBridge.groupSessionUpdateBackgroundImage(groupSessionId, null);
-      reloadSession();
+      await handleUpdateBackgroundImage(null);
     } catch (error) {
       console.error("Failed to remove background:", error);
     } finally {
@@ -353,21 +353,23 @@ export function GroupChatSettingsPage() {
       {/* Header */}
       <header
         className={cn(
-          "relative z-20 shrink-0 border-b border-fg/10 px-4 pb-3 pt-10",
+          "z-20 shrink-0 border-b border-fg/10 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+12px)] sticky top-0",
           !backgroundImagePath ? "bg-surface" : "",
         )}
       >
         <div className="flex items-center gap-3">
-          <button
-            onClick={handleBack}
-            className="flex shrink-0 px-[0.6em] py-[0.3em] items-center justify-center -ml-2 text-fg transition hover:text-fg/80"
-            aria-label="Back"
-          >
-            <ArrowLeft size={14} strokeWidth={2.5} />
-          </button>
-          <div className="min-w-0 flex-1 text-left">
-            <p className="truncate text-xl font-bold text-fg/90">{t("common.nav.settings")}</p>
-            <p className="mt-0.5 truncate text-xs text-fg/50">Manage group chat preferences</p>
+          <div className="flex flex-1 items-center min-w-0">
+            <button
+              onClick={handleBack}
+              className="flex shrink-0 px-[0.6em] py-[0.3em] items-center justify-center -ml-2 text-fg transition hover:text-fg/80"
+              aria-label="Back"
+            >
+              <ArrowLeft size={14} strokeWidth={2.5} />
+            </button>
+            <div className="min-w-0 flex-1 text-left">
+              <p className="truncate text-xl font-bold text-fg/90">{t("common.nav.settings")}</p>
+              <p className="mt-0.5 truncate text-xs text-fg/50">Manage group chat preferences</p>
+            </div>
           </div>
         </div>
       </header>
@@ -766,7 +768,7 @@ export function GroupChatSettingsPage() {
 
           {/* Session Management */}
           <section className={spacing.item}>
-            <SectionHeader title="Chat Package" subtitle="Export or import this group chat" />
+            <SectionHeader title="Data" subtitle="Export or import conversations" />
             <div className={spacing.field}>
               <button
                 onClick={() => setShowChatpkgExportMenu(true)}
@@ -799,10 +801,10 @@ export function GroupChatSettingsPage() {
                         "text-fg/50",
                       )}
                     >
-                      Export Chat Package
+                      Export
                     </div>
                     <div className={cn(typography.bodySmall.size, "text-fg truncate")}>
-                      Save this group as a `.chatpkg` archive
+                      Save as a shareable file
                     </div>
                   </div>
                 </div>
@@ -844,10 +846,10 @@ export function GroupChatSettingsPage() {
                         "text-fg/50",
                       )}
                     >
-                      Import Chat Package
+                      Import
                     </div>
                     <div className={cn(typography.bodySmall.size, "text-fg truncate")}>
-                      Import another group session from `.chatpkg`
+                      Load a conversation from a file
                     </div>
                   </div>
                 </div>
@@ -859,8 +861,8 @@ export function GroupChatSettingsPage() {
           {/* Session Management */}
           <section className={spacing.item}>
             <SectionHeader
-              title="Session Management"
-              subtitle="Clone or branch this conversation"
+              title="Conversation"
+              subtitle="Duplicate or continue in a new chat"
             />
             <div className={spacing.field}>
               <button
@@ -894,10 +896,10 @@ export function GroupChatSettingsPage() {
                         "text-fg/50",
                       )}
                     >
-                      Clone Group
+                      Duplicate
                     </div>
                     <div className={cn(typography.bodySmall.size, "text-fg truncate")}>
-                      Duplicate this group with or without messages
+                      Copy this chat with or without messages
                     </div>
                   </div>
                 </div>
@@ -935,10 +937,10 @@ export function GroupChatSettingsPage() {
                         "text-fg/50",
                       )}
                     >
-                      Branch with Character
+                      Branch to 1-on-1
                     </div>
                     <div className={cn(typography.bodySmall.size, "text-fg truncate")}>
-                      Continue as 1-on-1 chat with a character
+                      Continue privately with one character
                     </div>
                   </div>
                 </div>

@@ -1445,6 +1445,7 @@ export type DynamicMemorySettings = z.infer<typeof DynamicMemorySettingsSchema>;
 
 export const GroupSessionSchema = z.object({
   id: z.string().uuid(),
+  groupCharacterId: z.string().uuid().nullish().optional(),
   name: z.string(),
   characterIds: z.array(z.string().uuid()),
   mutedCharacterIds: z.array(z.string().uuid()).default([]),
@@ -1469,6 +1470,8 @@ export const GroupSessionSchema = z.object({
   memorySummaryTokenCount: z.number().int().default(0),
   /** Speaker selection method for group chat */
   speakerSelectionMethod: z.enum(["llm", "heuristic", "round_robin"]).default("llm"),
+  /** Memory mode: "manual" or "dynamic" */
+  memoryType: z.enum(["manual", "dynamic"]).default("manual"),
   /** Memory tool events tracking (for dynamic memory cycle gating) */
   memoryToolEvents: z
     .array(
@@ -1501,6 +1504,40 @@ export const GroupSessionSchema = z.object({
     .default([]),
 });
 export type GroupSession = z.infer<typeof GroupSessionSchema>;
+
+export const GroupSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  characterIds: z.array(z.string().uuid()),
+  mutedCharacterIds: z.array(z.string().uuid()).default([]),
+  personaId: z.string().uuid().nullish(),
+  createdAt: z.number().int(),
+  updatedAt: z.number().int(),
+  archived: z.boolean().default(false),
+  chatType: z.enum(["conversation", "roleplay"]).default("conversation"),
+  startingScene: SceneSchema.optional().nullable(),
+  backgroundImagePath: z.string().nullish().optional(),
+  speakerSelectionMethod: z.enum(["llm", "heuristic", "round_robin"]).default("llm"),
+  memoryType: z.enum(["manual", "dynamic"]).default("manual"),
+});
+export type Group = z.infer<typeof GroupSchema>;
+
+export const GroupPreviewSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  characterIds: z.array(z.string().uuid()),
+  updatedAt: z.number().int(),
+  lastMessage: z.string().nullish(),
+  messageCount: z.number().int(),
+  archived: z.boolean().default(false),
+  chatType: z.enum(["conversation", "roleplay"]).default("conversation"),
+});
+export type GroupPreview = z.infer<typeof GroupPreviewSchema>;
+
+export const GroupCharacterSchema = GroupSchema;
+export type GroupCharacter = Group;
+export const GroupCharacterPreviewSchema = GroupPreviewSchema;
+export type GroupCharacterPreview = GroupPreview;
 
 export const GroupParticipationSchema = z.object({
   id: z.string().uuid(),
@@ -1545,6 +1582,7 @@ export type GroupMessage = z.infer<typeof GroupMessageSchema>;
 
 export const GroupSessionPreviewSchema = z.object({
   id: z.string().uuid(),
+  groupCharacterId: z.string().uuid().nullish().optional(),
   name: z.string(),
   characterIds: z.array(z.string().uuid()),
   updatedAt: z.number().int(),

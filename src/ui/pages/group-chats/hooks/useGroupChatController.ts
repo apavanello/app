@@ -149,8 +149,9 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
       status: string;
       characterId?: string;
       characterName?: string;
+      message?: string;
     }>("group_chat_status", (event) => {
-      const { sessionId, status, characterId, characterName } = event.payload;
+      const { sessionId, status, characterId, characterName, message } = event.payload;
 
       if (sessionId !== groupSessionId) return;
 
@@ -183,6 +184,21 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
           selectedCharacterId: null,
           selectedCharacterName: null,
           selectedCharacterAvatarUrl: null,
+        });
+      } else if (status === "error") {
+        const placeholderId = assistantPlaceholderIdRef.current;
+        if (placeholderId) {
+          assistantPlaceholderIdRef.current = null;
+          setMessages((prev) => prev.filter((m) => m.id !== placeholderId));
+        }
+        setUi({
+          sending: false,
+          sendingStatus: null,
+          selectedCharacterId: null,
+          selectedCharacterName: null,
+          selectedCharacterAvatarUrl: null,
+          regeneratingMessageId: null,
+          error: message || "Group chat request failed",
         });
       }
     });

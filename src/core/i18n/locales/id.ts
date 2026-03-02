@@ -655,6 +655,10 @@ export const idMessages: DeepPartialMessageTree<LocaleMessages> = {
       noGroupChatsYet: "Belum ada obrolan grup",
       noGroupChatsDesc:
         "Buat obrolan grup pertama Anda dari tombol + di bawah untuk mengobrol dengan banyak karakter sekaligus",
+      newChat: "Chat Baru",
+      openChat: "Buka Chat",
+      chatSettings: "Pengaturan Chat",
+      sessionCount: "{{count}} obrolan",
     },
     create: {
       invalidPackage: "Paket ini bukan paket obrolan grup.",

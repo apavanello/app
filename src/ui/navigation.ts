@@ -65,6 +65,7 @@ export const Routes = {
   // Group Chat routes
   groupChats: "/group-chats",
   groupChatsNew: "/group-chats/new",
+  groupSettings: (groupId: string) => `/group-chats/groups/${groupId}/settings`,
   groupChat: (groupSessionId: string) => `/group-chats/${groupSessionId}`,
   groupChatSettings: (groupSessionId: string) => `/group-chats/${groupSessionId}/settings`,
   groupChatMemories: (groupSessionId: string) => `/group-chats/${groupSessionId}/memories`,

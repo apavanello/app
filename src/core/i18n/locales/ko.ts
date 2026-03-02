@@ -650,6 +650,10 @@ export const koMessages: DeepPartialMessageTree<LocaleMessages> = {
       noGroupChatsYet: "아직 그룹 채팅이 없습니다",
       noGroupChatsDesc:
         "아래 + 버튼에서 첫 번째 그룹 채팅을 만들어 여러 캐릭터와 동시에 대화하세요",
+      newChat: "새 채팅",
+      openChat: "채팅 열기",
+      chatSettings: "채팅 설정",
+      sessionCount: "{{count}}개의 채팅",
     },
     create: {
       invalidPackage: "이 패키지는 그룹 채팅 패키지가 아닙니다.",

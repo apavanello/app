@@ -662,6 +662,10 @@ export const itMessages: DeepPartialMessageTree<LocaleMessages> = {
       noGroupChatsYet: "Nessuna chat di gruppo",
       noGroupChatsDesc:
         "Crea la tua prima chat di gruppo dal pulsante + in basso per conversare con più personaggi contemporaneamente",
+      newChat: "Nuova chat",
+      openChat: "Apri chat",
+      chatSettings: "Impostazioni chat",
+      sessionCount: "{{count}} chat",
     },
     create: {
       invalidPackage: "Questo pacchetto non è un pacchetto di chat di gruppo.",

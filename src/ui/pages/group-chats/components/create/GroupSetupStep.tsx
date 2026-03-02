@@ -8,6 +8,7 @@ import {
   Brain,
   BarChart3,
   RefreshCw,
+  BookOpen,
 } from "lucide-react";
 import { useI18n } from "../../../../../core/i18n/context";
 import { typography, radius, spacing, interactive, shadows, cn } from "../../../../design-tokens";
@@ -16,6 +17,8 @@ import { processBackgroundImage } from "../../../../../core/utils/image";
 interface GroupSetupStepProps {
   chatType: "conversation" | "roleplay";
   onChatTypeChange: (value: "conversation" | "roleplay") => void;
+  memoryType: "manual" | "dynamic";
+  onMemoryTypeChange: (value: "manual" | "dynamic") => void;
   speakerSelectionMethod: "llm" | "heuristic" | "round_robin";
   onSpeakerSelectionMethodChange: (value: "llm" | "heuristic" | "round_robin") => void;
   groupName: string;
@@ -30,6 +33,8 @@ interface GroupSetupStepProps {
 export function GroupSetupStep({
   chatType,
   onChatTypeChange,
+  memoryType,
+  onMemoryTypeChange,
   speakerSelectionMethod,
   onSpeakerSelectionMethodChange,
   groupName,
@@ -285,6 +290,102 @@ export function GroupSetupStep({
             : speakerSelectionMethod === "heuristic"
               ? t("groupChats.create.groupSetup.heuristicDesc")
               : t("groupChats.create.groupSetup.roundRobinDesc")}
+        </p>
+      </div>
+
+      {/* Memory Mode */}
+      <div className={spacing.field}>
+        <label
+          className={cn(
+            typography.label.size,
+            typography.label.weight,
+            typography.label.tracking,
+            "uppercase text-fg/70",
+          )}
+        >
+          Memory Mode
+        </label>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => onMemoryTypeChange("manual")}
+            className={cn(
+              "relative flex flex-col items-center gap-1.5 p-3",
+              radius.lg,
+              "border text-center",
+              interactive.transition.fast,
+              memoryType === "manual"
+                ? "border-accent/40 bg-accent/10"
+                : "border-fg/10 bg-fg/5 hover:border-fg/20",
+            )}
+          >
+            <BookOpen
+              className={cn(
+                "h-5 w-5",
+                memoryType === "manual" ? "text-accent/80" : "text-fg/50",
+              )}
+            />
+            <div
+              className={cn(
+                "text-xs font-semibold",
+                memoryType === "manual" ? "text-accent" : "text-fg/80",
+              )}
+            >
+              Manual
+            </div>
+            <div className="text-[10px] text-fg/40">Manage notes yourself</div>
+            {memoryType === "manual" && (
+              <motion.div
+                layoutId="memoryTypeIndicator"
+                className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent"
+              >
+                <Sparkles className="h-2.5 w-2.5 text-surface" />
+              </motion.div>
+            )}
+          </button>
+
+          <button
+            onClick={() => onMemoryTypeChange("dynamic")}
+            className={cn(
+              "relative flex flex-col items-center gap-1.5 p-3",
+              radius.lg,
+              "border text-center",
+              interactive.transition.fast,
+              memoryType === "dynamic"
+                ? "border-accent/40 bg-accent/10"
+                : "border-fg/10 bg-fg/5 hover:border-fg/20",
+            )}
+          >
+            <Brain
+              className={cn(
+                "h-5 w-5",
+                memoryType === "dynamic" ? "text-accent/80" : "text-fg/50",
+              )}
+            />
+            <div
+              className={cn(
+                "text-xs font-semibold",
+                memoryType === "dynamic" ? "text-accent" : "text-fg/80",
+              )}
+            >
+              Dynamic
+            </div>
+            <div className="text-[10px] text-fg/40">Automatic summaries & recall</div>
+            {memoryType === "dynamic" && (
+              <motion.div
+                layoutId="memoryTypeIndicator"
+                className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent"
+              >
+                <Sparkles className="h-2.5 w-2.5 text-surface" />
+              </motion.div>
+            )}
+          </button>
+        </div>
+
+        <p className={cn(typography.bodySmall.size, "mt-2 text-fg/40")}>
+          {memoryType === "manual"
+            ? "You add and manage memory notes yourself"
+            : "AI automatically creates and retrieves memories from conversations"}
         </p>
       </div>
 

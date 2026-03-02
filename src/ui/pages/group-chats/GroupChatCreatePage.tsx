@@ -156,6 +156,8 @@ export function GroupChatCreatePage() {
               key="group-setup"
               chatType={state.chatType}
               onChatTypeChange={actions.setChatType}
+              memoryType={state.memoryType}
+              onMemoryTypeChange={actions.setMemoryType}
               speakerSelectionMethod={state.speakerSelectionMethod}
               onSpeakerSelectionMethodChange={actions.setSpeakerSelectionMethod}
               groupName={state.groupName}

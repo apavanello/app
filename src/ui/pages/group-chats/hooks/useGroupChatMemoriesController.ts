@@ -343,7 +343,7 @@ export function useGroupChatMemoriesController(groupSessionId?: string) {
   const saveEdit = useCallback(
     async (index: number) => {
       const trimmed = ui.editingValue.trim();
-      if (!trimmed || trimmed === memoryItems[index]?.text) {
+      if (!trimmed || trimmed === memoryItems.find((m) => m.index === index)?.text) {
         dispatch({ type: "CANCEL_EDIT" });
         return;
       }

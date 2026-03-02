@@ -442,7 +442,7 @@ export function GroupChatFooter({
             "mb-0.5 flex h-10 w-11 shrink-0 items-center justify-center self-end",
             radius.full,
             sending && onAbort
-              ? "border border-danger/40 bg-danger/20 text-danger"
+              ? "border border-danger/30 bg-danger/15 text-danger/80"
               : hasDraft || hasAttachments
                 ? "border border-accent/40 bg-accent/20 text-accent"
                 : onContinue
@@ -450,7 +450,7 @@ export function GroupChatFooter({
                   : "border border-fg/15 bg-fg/10 text-fg/40",
             interactive.transition.fast,
             interactive.active.scale,
-            sending && onAbort && "hover:border-danger/60 hover:bg-danger/30",
+            sending && onAbort && "hover:border-danger/40 hover:bg-danger/20 hover:text-danger/90",
             !sending && (hasDraft || hasAttachments) && "hover:border-accent/60 hover:bg-accent/30",
             !sending &&
               !hasDraft &&

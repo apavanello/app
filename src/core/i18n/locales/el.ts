@@ -661,6 +661,10 @@ export const elMessages: DeepPartialMessageTree<LocaleMessages> = {
       noGroupChatsYet: "Δεν υπάρχουν ομαδικές συνομιλίες ακόμα",
       noGroupChatsDesc:
         "Δημιουργήστε την πρώτη σας ομαδική συνομιλία από το κουμπί + παρακάτω για συνομιλίες με πολλούς χαρακτήρες ταυτόχρονα",
+      newChat: "Νέα συνομιλία",
+      openChat: "Άνοιγμα συνομιλίας",
+      chatSettings: "Ρυθμίσεις συνομιλίας",
+      sessionCount: "{{count}} συνομιλίες",
     },
     create: {
       invalidPackage: "Αυτό το πακέτο δεν είναι πακέτο ομαδικής συνομιλίας.",

@@ -3,6 +3,7 @@ pub mod characters;
 pub mod chatpkg;
 pub mod db;
 pub mod entity_transfer;
+pub mod group_characters;
 pub mod group_sessions;
 pub mod importer;
 pub mod legacy;

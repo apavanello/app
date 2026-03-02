@@ -656,6 +656,10 @@ export const jaMessages: DeepPartialMessageTree<LocaleMessages> = {
       noGroupChatsYet: "グループチャットはまだありません",
       noGroupChatsDesc:
         "下の+ボタンから最初のグループチャットを作成して、複数のキャラクターと同時に会話しましょう",
+      newChat: "新しいチャット",
+      openChat: "チャットを開く",
+      chatSettings: "チャット設定",
+      sessionCount: "{{count}} 件のチャット",
     },
     create: {
       invalidPackage: "このパッケージはグループチャットパッケージではありません。",

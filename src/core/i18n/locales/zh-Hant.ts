@@ -642,6 +642,10 @@ export const zhHantMessages: LocaleMessages = {
       deleteConfirmMessage: "您確定要刪除「{{name}}」嗎？這也會刪除此群組對話中的所有訊息。",
       noGroupChatsYet: "尚無群組對話",
       noGroupChatsDesc: "點擊下方 + 按鈕建立您的第一個群組對話，與多個角色同時對話",
+      newChat: "新對話",
+      openChat: "開啟對話",
+      chatSettings: "對話設定",
+      sessionCount: "{{count}} 個對話",
     },
     create: {
       invalidPackage: "此包不是群組對話包。",

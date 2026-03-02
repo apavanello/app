@@ -140,16 +140,17 @@ export function useGroupChatCreateController(options: GroupChatCreateControllerO
         }
       }
 
-      const session = await storageBridge.groupSessionCreate(
+      const group = await storageBridge.groupCreate(
         name,
         Array.from(ui.selectedIds),
         null,
         ui.chatType,
         startingScene,
       );
+      const session = await storageBridge.groupCreateSession(group.id);
       onCreated?.(session.id);
     } catch (err) {
-      console.error("Failed to create group session:", err);
+      console.error("Failed to create group character:", err);
       dispatch({ type: "set-error", value: "Failed to create group chat" });
     } finally {
       dispatch({ type: "set-creating", value: false });

@@ -569,9 +569,27 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
           FOREIGN KEY(provider_id) REFERENCES audio_providers(id) ON DELETE CASCADE
         );
 
+        -- Group character configs (reusable group setup)
+        CREATE TABLE IF NOT EXISTS group_characters (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          character_ids TEXT NOT NULL DEFAULT '[]',
+          muted_character_ids TEXT NOT NULL DEFAULT '[]',
+          persona_id TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          archived INTEGER NOT NULL DEFAULT 0,
+          chat_type TEXT NOT NULL DEFAULT 'conversation',
+          starting_scene TEXT,
+          background_image_path TEXT,
+          speaker_selection_method TEXT NOT NULL DEFAULT 'llm',
+          FOREIGN KEY(persona_id) REFERENCES personas(id) ON DELETE SET NULL
+        );
+
         -- Group chat sessions (multi-character conversations)
         CREATE TABLE IF NOT EXISTS group_sessions (
           id TEXT PRIMARY KEY,
+          group_character_id TEXT,
           name TEXT NOT NULL,
           character_ids TEXT NOT NULL DEFAULT '[]',
           muted_character_ids TEXT NOT NULL DEFAULT '[]',
@@ -588,7 +606,8 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
           memory_summary_token_count INTEGER NOT NULL DEFAULT 0,
           memory_tool_events TEXT NOT NULL DEFAULT '[]',
           speaker_selection_method TEXT NOT NULL DEFAULT 'llm',
-          FOREIGN KEY(persona_id) REFERENCES personas(id) ON DELETE SET NULL
+          FOREIGN KEY(persona_id) REFERENCES personas(id) ON DELETE SET NULL,
+          FOREIGN KEY(group_character_id) REFERENCES group_characters(id) ON DELETE SET NULL
         );
 
         -- Group chat participation tracking (per-character stats)
@@ -664,6 +683,44 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
         CREATE INDEX IF NOT EXISTS idx_group_messages_speaker ON group_messages(speaker_character_id);
         CREATE INDEX IF NOT EXISTS idx_group_message_variants_message ON group_message_variants(message_id);
       "#,
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    // Backward-compatible group chat schema bootstrap for existing databases:
+    // older DBs have group_sessions but not group_character_id yet.
+    let mut stmt_group_sessions = conn
+        .prepare("PRAGMA table_info(group_sessions)")
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let mut group_session_cols = std::collections::HashSet::new();
+    let mut rows_group_sessions = stmt_group_sessions
+        .query([])
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    while let Some(row) = rows_group_sessions
+        .next()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
+    {
+        let col_name: String = row
+            .get(1)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        group_session_cols.insert(col_name);
+    }
+
+    if !group_session_cols.contains("group_character_id") {
+        conn.execute(
+            "ALTER TABLE group_sessions ADD COLUMN group_character_id TEXT",
+            [],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    }
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_group_sessions_group_character ON group_sessions(group_character_id)",
+        [],
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_group_characters_updated ON group_characters(updated_at)",
+        [],
     )
     .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 

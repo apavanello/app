@@ -661,6 +661,10 @@ export const noMessages: DeepPartialMessageTree<LocaleMessages> = {
       noGroupChatsYet: "Ingen gruppechatter ennå",
       noGroupChatsDesc:
         "Opprett din første gruppechat fra +-knappen nedenfor for å ha samtaler med flere karakterer samtidig",
+      newChat: "Ny chat",
+      openChat: "Åpne chat",
+      chatSettings: "Chatinnstillinger",
+      sessionCount: "{{count}} chatter",
     },
     create: {
       invalidPackage: "Denne pakken er ikke en gruppechatpakke.",

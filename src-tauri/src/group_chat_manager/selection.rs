@@ -21,6 +21,18 @@ pub struct SelectionResult {
     pub reasoning: Option<String>,
 }
 
+fn prompt_quote(value: &str) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| format!("{:?}", value))
+}
+
+fn prompt_field(prompt: &mut String, label: &str, value: &str) {
+    prompt.push_str("- ");
+    prompt.push_str(label);
+    prompt.push_str(": ");
+    prompt.push_str(&prompt_quote(value));
+    prompt.push('\n');
+}
+
 // ============================================================================
 // @Mention Parsing
 // ============================================================================
@@ -144,8 +156,9 @@ pub fn build_selection_prompt(context: &GroupChatContext) -> String {
             0
         };
 
-        prompt.push_str(&format!("### {}\n", character.name));
-        prompt.push_str(&format!("- ID: {}\n", character.id));
+        prompt.push_str("### Participant\n");
+        prompt_field(&mut prompt, "Name", &character.name);
+        prompt_field(&mut prompt, "ID", &character.id);
 
         // Include definition if available, otherwise fall back to personality_summary
         if let Some(desc) = character
@@ -154,7 +167,7 @@ pub fn build_selection_prompt(context: &GroupChatContext) -> String {
             .or(character.description.as_ref())
         {
             if !desc.is_empty() {
-                prompt.push_str(&format!("- Definition: {}\n", desc));
+                prompt_field(&mut prompt, "Definition", desc);
             }
         }
         if let Some(summary) = &character.personality_summary {
@@ -166,7 +179,7 @@ pub fn build_selection_prompt(context: &GroupChatContext) -> String {
                 .map(|d| d.len() > 200)
                 .unwrap_or(false);
             if is_truncated {
-                prompt.push_str(&format!("- Personality Summary: {}\n", summary));
+                prompt_field(&mut prompt, "Personality Summary", summary);
             }
         }
 
@@ -209,12 +222,16 @@ pub fn build_selection_prompt(context: &GroupChatContext) -> String {
             msg.content.clone()
         };
 
-        prompt.push_str(&format!("[{}]: {}\n", speaker, content));
+        prompt.push_str("- Entry\n");
+        prompt_field(&mut prompt, "Speaker", &speaker);
+        prompt_field(&mut prompt, "Message", &content);
+        prompt.push('\n');
     }
 
     // New user message
     prompt.push_str(&format!("\n## New Message from User\n\n"));
-    prompt.push_str(&format!("{}\n\n", context.user_message));
+    prompt.push_str(&prompt_quote(&context.user_message));
+    prompt.push_str("\n\n");
 
     // Selection guidelines
     prompt.push_str("## Selection Guidelines\n\n");
@@ -574,6 +591,7 @@ mod tests {
                     "char-2".to_string(),
                     "char-3".to_string(),
                 ],
+                group_character_id: None,
                 muted_character_ids: muted_character_ids
                     .into_iter()
                     .map(|s| s.to_string())
@@ -652,6 +670,20 @@ mod tests {
             selection.reasoning,
             Some("Alice is best suited".to_string())
         );
+    }
+
+    #[test]
+    fn test_build_selection_prompt_escapes_quotes() {
+        let mut context = test_context(vec![]);
+        context.characters[0].name = r#"Alice "Quoted""#.to_string();
+        context.characters[0].definition = Some(r#"Says "hello" often"#.to_string());
+        context.user_message = r#"Tell "Alice" to respond"#.to_string();
+
+        let prompt = build_selection_prompt(&context);
+
+        assert!(prompt.contains(r#"- Name: "Alice \"Quoted\"""#));
+        assert!(prompt.contains(r#"- Definition: "Says \"hello\" often""#));
+        assert!(prompt.contains(r#""Tell \"Alice\" to respond""#));
     }
 
     #[test]

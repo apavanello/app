@@ -664,6 +664,10 @@ export const nlMessages: DeepPartialMessageTree<LocaleMessages> = {
       noGroupChatsYet: "Nog geen groepschats",
       noGroupChatsDesc:
         "Maak je eerste groepschat aan via de +-knop hieronder om met meerdere karakters tegelijk te praten",
+      newChat: "Nieuwe chat",
+      openChat: "Chat openen",
+      chatSettings: "Chatinstellingen",
+      sessionCount: "{{count}} gesprekken",
     },
     create: {
       invalidPackage: "Dit pakket is geen groepschatpakket.",
