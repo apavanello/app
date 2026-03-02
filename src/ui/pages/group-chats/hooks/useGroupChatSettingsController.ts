@@ -30,7 +30,7 @@ export function useGroupChatSettingsController(
     updateSession,
   } = options;
 
-  const [session, setSession] = useState<GroupSession | null>(layoutSession ?? null);
+  const session = layoutSession ?? null;
   const characters = layoutCharacters;
   const personas = layoutPersonas;
   const [participationStats, setParticipationStats] = useState<GroupParticipation[]>([]);
@@ -40,13 +40,6 @@ export function useGroupChatSettingsController(
   const setUi = useCallback((patch: Partial<typeof ui>) => {
     dispatch({ type: "PATCH", patch });
   }, []);
-
-  // Sync session from layout when it changes (e.g. after reloadSession)
-  useEffect(() => {
-    if (layoutSession) {
-      setSession(layoutSession);
-    }
-  }, [layoutSession]);
 
   // Only fetch stats + message count (session, characters, personas come from layout)
   const loadData = useCallback(async () => {
@@ -114,7 +107,6 @@ export function useGroupChatSettingsController(
         session.characterIds,
         session.personaId,
       );
-      setSession(updated);
       updateSession?.(updated);
       setUi({ editingName: false });
     } catch (err) {
@@ -136,7 +128,6 @@ export function useGroupChatSettingsController(
           session.characterIds,
           personaId,
         );
-        setSession(updated);
         updateSession?.(updated);
         setUi({ showPersonaSelector: false });
       } catch (err) {
@@ -155,7 +146,6 @@ export function useGroupChatSettingsController(
       try {
         setUi({ saving: true });
         const updated = await storageBridge.groupSessionAddCharacter(session.id, characterId);
-        setSession(updated);
         updateSession?.(updated);
         setUi({ showAddCharacter: false });
       } catch (err) {
@@ -179,7 +169,6 @@ export function useGroupChatSettingsController(
       try {
         setUi({ saving: true });
         const updated = await storageBridge.groupSessionRemoveCharacter(session.id, characterId);
-        setSession(updated);
         updateSession?.(updated);
         setUi({ showRemoveConfirm: null });
       } catch (err) {
@@ -200,7 +189,6 @@ export function useGroupChatSettingsController(
           session.id,
           method,
         );
-        setSession(updated);
         updateSession?.(updated);
       } catch (err) {
         console.error("Failed to update speaker selection method:", err);
@@ -232,7 +220,6 @@ export function useGroupChatSettingsController(
           session.id,
           Array.from(nextMuted),
         );
-        setSession(updated);
         updateSession?.(updated);
       } catch (err) {
         console.error("Failed to update muted characters:", err);
@@ -253,7 +240,6 @@ export function useGroupChatSettingsController(
           session.id,
           backgroundImagePath,
         );
-        setSession(updated);
         updateSession?.(updated);
       } catch (err) {
         console.error("Failed to update background image:", err);
