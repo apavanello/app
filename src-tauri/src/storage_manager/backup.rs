@@ -9,7 +9,7 @@ use serde_json::Value as JsonValue;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use walkdir::WalkDir;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
@@ -120,6 +120,25 @@ fn get_downloads_dir() -> Result<PathBuf, String> {
 // TABLE EXPORT FUNCTIONS - Export each table to JSON
 // ============================================================================
 
+fn export_meta(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
+    let conn = open_db(app)?;
+    let mut stmt = conn
+        .prepare("SELECT key, value FROM meta ORDER BY key ASC")
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(serde_json::json!({
+                "key": r.get::<_, String>(0)?,
+                "value": r.get::<_, Option<String>>(1)?,
+            }))
+        })
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
 fn export_settings(app: &tauri::AppHandle) -> Result<JsonValue, String> {
     let conn = open_db(app)?;
 
@@ -131,11 +150,13 @@ fn export_settings(app: &tauri::AppHandle) -> Result<JsonValue, String> {
         Option<String>,
         i64,
         Option<String>,
+        i64,
+        i64,
     )> = conn
         .query_row(
             "SELECT default_provider_credential_id, default_model_id, app_state,
                     prompt_template_id, system_prompt,
-                    migration_version, advanced_settings
+                    migration_version, advanced_settings, created_at, updated_at
              FROM settings WHERE id = 1",
             [],
             |r| {
@@ -147,6 +168,8 @@ fn export_settings(app: &tauri::AppHandle) -> Result<JsonValue, String> {
                     r.get(4)?,
                     r.get(5)?,
                     r.get(6)?,
+                    r.get(7)?,
+                    r.get(8)?,
                 ))
             },
         )
@@ -161,6 +184,8 @@ fn export_settings(app: &tauri::AppHandle) -> Result<JsonValue, String> {
         system_prompt,
         migration_version,
         advanced_settings,
+        created_at,
+        updated_at,
     )) = row
     {
         Ok(serde_json::json!({
@@ -171,6 +196,8 @@ fn export_settings(app: &tauri::AppHandle) -> Result<JsonValue, String> {
             "system_prompt": system_prompt,
             "migration_version": migration_version,
             "advanced_settings": advanced_settings.and_then(|s| serde_json::from_str::<JsonValue>(&s).ok()),
+            "created_at": created_at,
+            "updated_at": updated_at,
         }))
     } else {
         Ok(serde_json::json!({}))
@@ -180,7 +207,7 @@ fn export_settings(app: &tauri::AppHandle) -> Result<JsonValue, String> {
 fn export_provider_credentials(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
     let conn = open_db(app)?;
     let mut stmt = conn
-        .prepare("SELECT id, provider_id, label, api_key, base_url, default_model, headers, config FROM provider_credentials")
+        .prepare("SELECT id, provider_id, label, api_key_ref, api_key, base_url, default_model, headers, config FROM provider_credentials")
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
     let rows = stmt
@@ -189,11 +216,12 @@ fn export_provider_credentials(app: &tauri::AppHandle) -> Result<Vec<JsonValue>,
                 "id": r.get::<_, String>(0)?,
                 "provider_id": r.get::<_, String>(1)?,
                 "label": r.get::<_, String>(2)?,
-                "api_key": r.get::<_, Option<String>>(3)?,
-                "base_url": r.get::<_, Option<String>>(4)?,
-                "default_model": r.get::<_, Option<String>>(5)?,
-                "headers": r.get::<_, Option<String>>(6)?,
-                "config": r.get::<_, Option<String>>(7)?,
+                "api_key_ref": r.get::<_, Option<String>>(3)?,
+                "api_key": r.get::<_, Option<String>>(4)?,
+                "base_url": r.get::<_, Option<String>>(5)?,
+                "default_model": r.get::<_, Option<String>>(6)?,
+                "headers": r.get::<_, Option<String>>(7)?,
+                "config": r.get::<_, Option<String>>(8)?,
             }))
         })
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -205,7 +233,7 @@ fn export_provider_credentials(app: &tauri::AppHandle) -> Result<Vec<JsonValue>,
 fn export_models(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
     let conn = open_db(app)?;
     let mut stmt = conn
-        .prepare("SELECT id, name, provider_id, provider_credential_id, provider_label, display_name, created_at, input_scopes, output_scopes, advanced_model_settings, prompt_template_id, system_prompt FROM models")
+        .prepare("SELECT id, name, provider_id, provider_credential_id, provider_label, display_name, created_at, model_type, input_scopes, output_scopes, advanced_model_settings, prompt_template_id, system_prompt FROM models")
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
     let rows = stmt
@@ -218,11 +246,12 @@ fn export_models(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
                 "provider_label": r.get::<_, String>(4)?,
                 "display_name": r.get::<_, String>(5)?,
                 "created_at": r.get::<_, i64>(6)?,
-                "input_scopes": r.get::<_, Option<String>>(7)?,
-                "output_scopes": r.get::<_, Option<String>>(8)?,
-                "advanced_model_settings": r.get::<_, Option<String>>(9)?,
-                "prompt_template_id": r.get::<_, Option<String>>(10)?,
-                "system_prompt": r.get::<_, Option<String>>(11)?,
+                "model_type": r.get::<_, Option<String>>(7)?,
+                "input_scopes": r.get::<_, Option<String>>(8)?,
+                "output_scopes": r.get::<_, Option<String>>(9)?,
+                "advanced_model_settings": r.get::<_, Option<String>>(10)?,
+                "prompt_template_id": r.get::<_, Option<String>>(11)?,
+                "system_prompt": r.get::<_, Option<String>>(12)?,
             }))
         })
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -315,7 +344,7 @@ fn export_characters(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
 
     // Get all characters
     let mut stmt = conn
-        .prepare("SELECT id, name, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, background_image_path, description, definition, default_scene_id, default_model_id, memory_type, prompt_template_id, system_prompt, voice_config, voice_autoplay, disable_avatar_gradient, custom_gradient_enabled, custom_gradient_colors, custom_text_color, custom_text_secondary, created_at, updated_at FROM characters")
+        .prepare("SELECT id, name, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, background_image_path, description, definition, nickname, scenario, creator_notes, creator, creator_notes_multilingual, source, tags, default_scene_id, default_model_id, fallback_model_id, memory_type, prompt_template_id, system_prompt, voice_config, voice_autoplay, disable_avatar_gradient, custom_gradient_enabled, custom_gradient_colors, custom_text_color, custom_text_secondary, chat_appearance, default_chat_template_id, created_at, updated_at FROM characters")
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
     let characters: Vec<(String, JsonValue)> = stmt
@@ -331,20 +360,30 @@ fn export_characters(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
                 "background_image_path": r.get::<_, Option<String>>(6)?,
                 "description": r.get::<_, Option<String>>(7)?,
                 "definition": r.get::<_, Option<String>>(8)?,
-                "default_scene_id": r.get::<_, Option<String>>(9)?,
-                "default_model_id": r.get::<_, Option<String>>(10)?,
-                "memory_type": r.get::<_, String>(11)?,
-                "prompt_template_id": r.get::<_, Option<String>>(12)?,
-                "system_prompt": r.get::<_, Option<String>>(13)?,
-                "voice_config": r.get::<_, Option<String>>(14)?,
-                "voice_autoplay": r.get::<_, Option<i64>>(15)?.unwrap_or(0) != 0,
-                "disable_avatar_gradient": r.get::<_, i64>(16)? != 0,
-                "custom_gradient_enabled": r.get::<_, i64>(17)? != 0,
-                "custom_gradient_colors": r.get::<_, Option<String>>(18)?,
-                "custom_text_color": r.get::<_, Option<String>>(19)?,
-                "custom_text_secondary": r.get::<_, Option<String>>(20)?,
-                "created_at": r.get::<_, i64>(21)?,
-                "updated_at": r.get::<_, i64>(22)?,
+                "nickname": r.get::<_, Option<String>>(9)?,
+                "scenario": r.get::<_, Option<String>>(10)?,
+                "creator_notes": r.get::<_, Option<String>>(11)?,
+                "creator": r.get::<_, Option<String>>(12)?,
+                "creator_notes_multilingual": r.get::<_, Option<String>>(13)?,
+                "source": r.get::<_, Option<String>>(14)?,
+                "tags": r.get::<_, Option<String>>(15)?,
+                "default_scene_id": r.get::<_, Option<String>>(16)?,
+                "default_model_id": r.get::<_, Option<String>>(17)?,
+                "fallback_model_id": r.get::<_, Option<String>>(18)?,
+                "memory_type": r.get::<_, String>(19)?,
+                "prompt_template_id": r.get::<_, Option<String>>(20)?,
+                "system_prompt": r.get::<_, Option<String>>(21)?,
+                "voice_config": r.get::<_, Option<String>>(22)?,
+                "voice_autoplay": r.get::<_, Option<i64>>(23)?.unwrap_or(0) != 0,
+                "disable_avatar_gradient": r.get::<_, i64>(24)? != 0,
+                "custom_gradient_enabled": r.get::<_, i64>(25)? != 0,
+                "custom_gradient_colors": r.get::<_, Option<String>>(26)?,
+                "custom_text_color": r.get::<_, Option<String>>(27)?,
+                "custom_text_secondary": r.get::<_, Option<String>>(28)?,
+                "chat_appearance": r.get::<_, Option<String>>(29)?,
+                "default_chat_template_id": r.get::<_, Option<String>>(30)?,
+                "created_at": r.get::<_, i64>(31)?,
+                "updated_at": r.get::<_, i64>(32)?,
             });
             Ok((id, json))
         })
@@ -421,7 +460,7 @@ fn export_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
     // Get all sessions
     let mut stmt = conn
         .prepare("SELECT id, character_id, title, system_prompt, selected_scene_id, persona_id, persona_disabled, voice_autoplay,
-                         temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k,
+                         prompt_template_id, temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k,
                          memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events,
                          memory_status, memory_error, archived, created_at, updated_at FROM sessions")
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -438,22 +477,23 @@ fn export_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
                 "persona_id": r.get::<_, Option<String>>(5)?,
                 "persona_disabled": r.get::<_, i64>(6)? != 0,
                 "voice_autoplay": r.get::<_, Option<i64>>(7)?.map(|value| value != 0),
-                "temperature": r.get::<_, Option<f64>>(8)?,
-                "top_p": r.get::<_, Option<f64>>(9)?,
-                "max_output_tokens": r.get::<_, Option<i64>>(10)?,
-                "frequency_penalty": r.get::<_, Option<f64>>(11)?,
-                "presence_penalty": r.get::<_, Option<f64>>(12)?,
-                "top_k": r.get::<_, Option<i64>>(13)?,
-                "memories": r.get::<_, String>(14)?,
-                "memory_embeddings": r.get::<_, String>(15)?,
-                "memory_summary": r.get::<_, Option<String>>(16)?,
-                "memory_summary_token_count": r.get::<_, i64>(17)?,
-                "memory_tool_events": r.get::<_, String>(18)?,
-                "memory_status": r.get::<_, Option<String>>(19)?,
-                "memory_error": r.get::<_, Option<String>>(20)?,
-                "archived": r.get::<_, i64>(21)? != 0,
-                "created_at": r.get::<_, i64>(22)?,
-                "updated_at": r.get::<_, i64>(23)?,
+                "prompt_template_id": r.get::<_, Option<String>>(8)?,
+                "temperature": r.get::<_, Option<f64>>(9)?,
+                "top_p": r.get::<_, Option<f64>>(10)?,
+                "max_output_tokens": r.get::<_, Option<i64>>(11)?,
+                "frequency_penalty": r.get::<_, Option<f64>>(12)?,
+                "presence_penalty": r.get::<_, Option<f64>>(13)?,
+                "top_k": r.get::<_, Option<i64>>(14)?,
+                "memories": r.get::<_, String>(15)?,
+                "memory_embeddings": r.get::<_, String>(16)?,
+                "memory_summary": r.get::<_, Option<String>>(17)?,
+                "memory_summary_token_count": r.get::<_, i64>(18)?,
+                "memory_tool_events": r.get::<_, String>(19)?,
+                "memory_status": r.get::<_, Option<String>>(20)?,
+                "memory_error": r.get::<_, Option<String>>(21)?,
+                "archived": r.get::<_, i64>(22)? != 0,
+                "created_at": r.get::<_, i64>(23)?,
+                "updated_at": r.get::<_, i64>(24)?,
             });
             Ok((id, json))
         })
@@ -534,9 +574,10 @@ fn export_group_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, Strin
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at, archived,
+            "SELECT id, group_character_id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at, archived,
                     chat_type, starting_scene, background_image_path,
-                    memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events
+                    memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events,
+                    speaker_selection_method, memory_type
              FROM group_sessions",
         )
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -546,21 +587,24 @@ fn export_group_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, Strin
             let id: String = r.get(0)?;
             let json = serde_json::json!({
                 "id": id.clone(),
-                "name": r.get::<_, String>(1)?,
-                "character_ids": r.get::<_, String>(2)?,
-                "muted_character_ids": r.get::<_, String>(3)?,
-                "persona_id": r.get::<_, Option<String>>(4)?,
-                "created_at": r.get::<_, i64>(5)?,
-                "updated_at": r.get::<_, i64>(6)?,
-                "archived": r.get::<_, i64>(7)? != 0,
-                "chat_type": r.get::<_, String>(8)?,
-                "starting_scene": r.get::<_, Option<String>>(9)?,
-                "background_image_path": r.get::<_, Option<String>>(10)?,
-                "memories": r.get::<_, String>(11)?,
-                "memory_embeddings": r.get::<_, String>(12)?,
-                "memory_summary": r.get::<_, String>(13)?,
-                "memory_summary_token_count": r.get::<_, i64>(14)?,
-                "memory_tool_events": r.get::<_, String>(15)?,
+                "group_character_id": r.get::<_, Option<String>>(1)?,
+                "name": r.get::<_, String>(2)?,
+                "character_ids": r.get::<_, String>(3)?,
+                "muted_character_ids": r.get::<_, String>(4)?,
+                "persona_id": r.get::<_, Option<String>>(5)?,
+                "created_at": r.get::<_, i64>(6)?,
+                "updated_at": r.get::<_, i64>(7)?,
+                "archived": r.get::<_, i64>(8)? != 0,
+                "chat_type": r.get::<_, String>(9)?,
+                "starting_scene": r.get::<_, Option<String>>(10)?,
+                "background_image_path": r.get::<_, Option<String>>(11)?,
+                "memories": r.get::<_, String>(12)?,
+                "memory_embeddings": r.get::<_, String>(13)?,
+                "memory_summary": r.get::<_, String>(14)?,
+                "memory_summary_token_count": r.get::<_, i64>(15)?,
+                "memory_tool_events": r.get::<_, String>(16)?,
+                "speaker_selection_method": r.get::<_, Option<String>>(17)?,
+                "memory_type": r.get::<_, Option<String>>(18)?,
             });
             Ok((id, json))
         })
@@ -673,8 +717,8 @@ fn export_usage_records(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String
     // Get all usage records
     let mut stmt = conn
         .prepare("SELECT id, timestamp, session_id, character_id, character_name, model_id, model_name,
-                  provider_id, provider_label, operation_type, prompt_tokens, completion_tokens, total_tokens,
-                  memory_tokens, summary_tokens, reasoning_tokens, prompt_cost, completion_cost, total_cost,
+                  provider_id, provider_label, operation_type, finish_reason, prompt_tokens, completion_tokens, total_tokens,
+                  memory_tokens, summary_tokens, reasoning_tokens, image_tokens, prompt_cost, completion_cost, total_cost,
                   success, error_message FROM usage_records")
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
@@ -692,17 +736,19 @@ fn export_usage_records(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String
                 "provider_id": r.get::<_, String>(7)?,
                 "provider_label": r.get::<_, String>(8)?,
                 "operation_type": r.get::<_, Option<String>>(9)?,
-                "prompt_tokens": r.get::<_, Option<i64>>(10)?,
-                "completion_tokens": r.get::<_, Option<i64>>(11)?,
-                "total_tokens": r.get::<_, Option<i64>>(12)?,
-                "memory_tokens": r.get::<_, Option<i64>>(13)?,
-                "summary_tokens": r.get::<_, Option<i64>>(14)?,
-                "reasoning_tokens": r.get::<_, Option<i64>>(15)?,
-                "prompt_cost": r.get::<_, Option<f64>>(16)?,
-                "completion_cost": r.get::<_, Option<f64>>(17)?,
-                "total_cost": r.get::<_, Option<f64>>(18)?,
-                "success": r.get::<_, i64>(19)? != 0,
-                "error_message": r.get::<_, Option<String>>(20)?,
+                "finish_reason": r.get::<_, Option<String>>(10)?,
+                "prompt_tokens": r.get::<_, Option<i64>>(11)?,
+                "completion_tokens": r.get::<_, Option<i64>>(12)?,
+                "total_tokens": r.get::<_, Option<i64>>(13)?,
+                "memory_tokens": r.get::<_, Option<i64>>(14)?,
+                "summary_tokens": r.get::<_, Option<i64>>(15)?,
+                "reasoning_tokens": r.get::<_, Option<i64>>(16)?,
+                "image_tokens": r.get::<_, Option<i64>>(17)?,
+                "prompt_cost": r.get::<_, Option<f64>>(18)?,
+                "completion_cost": r.get::<_, Option<f64>>(19)?,
+                "total_cost": r.get::<_, Option<f64>>(20)?,
+                "success": r.get::<_, i64>(21)? != 0,
+                "error_message": r.get::<_, Option<String>>(22)?,
             });
             Ok((id, json))
         })
@@ -761,21 +807,23 @@ fn export_lorebooks(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
     let mut result = Vec::new();
     for (lorebook_id, mut lorebook_json) in lorebooks {
         let mut entries_stmt = conn
-            .prepare("SELECT id, enabled, always_active, keywords, content, priority, display_order, created_at, updated_at FROM lorebook_entries WHERE lorebook_id = ? ORDER BY display_order ASC")
+            .prepare("SELECT id, title, enabled, always_active, keywords, case_sensitive, content, priority, display_order, created_at, updated_at FROM lorebook_entries WHERE lorebook_id = ? ORDER BY display_order ASC")
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
         let entries: Vec<JsonValue> = entries_stmt
             .query_map([&lorebook_id], |r| {
                 Ok(serde_json::json!({
                     "id": r.get::<_, String>(0)?,
-                    "enabled": r.get::<_, i64>(1)? != 0,
-                    "always_active": r.get::<_, i64>(2)? != 0,
-                    "keywords": r.get::<_, String>(3)?,
-                    "content": r.get::<_, String>(4)?,
-                    "priority": r.get::<_, i64>(5)?,
-                    "display_order": r.get::<_, i64>(6)?,
-                    "created_at": r.get::<_, i64>(7)?,
-                    "updated_at": r.get::<_, i64>(8)?,
+                    "title": r.get::<_, String>(1)?,
+                    "enabled": r.get::<_, i64>(2)? != 0,
+                    "always_active": r.get::<_, i64>(3)? != 0,
+                    "keywords": r.get::<_, String>(4)?,
+                    "case_sensitive": r.get::<_, i64>(5)? != 0,
+                    "content": r.get::<_, String>(6)?,
+                    "priority": r.get::<_, i64>(7)?,
+                    "display_order": r.get::<_, i64>(8)?,
+                    "created_at": r.get::<_, i64>(9)?,
+                    "updated_at": r.get::<_, i64>(10)?,
                 }))
             })
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
@@ -814,6 +862,153 @@ fn export_character_lorebooks(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, 
     Ok(links)
 }
 
+fn export_chat_templates(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
+    let conn = open_db(app)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, character_id, name, scene_id, prompt_template_id, created_at
+             FROM chat_templates
+             ORDER BY created_at ASC",
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    let templates: Vec<(String, JsonValue)> = stmt
+        .query_map([], |r| {
+            let id: String = r.get(0)?;
+            Ok((
+                id.clone(),
+                serde_json::json!({
+                    "id": id,
+                    "character_id": r.get::<_, String>(1)?,
+                    "name": r.get::<_, String>(2)?,
+                    "scene_id": r.get::<_, Option<String>>(3)?,
+                    "prompt_template_id": r.get::<_, Option<String>>(4)?,
+                    "created_at": r.get::<_, i64>(5)?,
+                }),
+            ))
+        })
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    let mut result = Vec::new();
+    for (template_id, mut template_json) in templates {
+        let mut msg_stmt = conn
+            .prepare(
+                "SELECT id, idx, role, content
+                 FROM chat_template_messages
+                 WHERE template_id = ?
+                 ORDER BY idx ASC",
+            )
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+        let messages: Vec<JsonValue> = msg_stmt
+            .query_map([&template_id], |r| {
+                Ok(serde_json::json!({
+                    "id": r.get::<_, String>(0)?,
+                    "idx": r.get::<_, i64>(1)?,
+                    "role": r.get::<_, String>(2)?,
+                    "content": r.get::<_, String>(3)?,
+                }))
+            })
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+        template_json["messages"] = serde_json::json!(messages);
+        result.push(template_json);
+    }
+
+    Ok(result)
+}
+
+fn export_creation_helper_sessions(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
+    let conn = open_db(app)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, creation_goal, status, session_json, uploaded_images_json, created_at, updated_at
+             FROM creation_helper_sessions
+             ORDER BY updated_at DESC",
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(serde_json::json!({
+                "id": r.get::<_, String>(0)?,
+                "creation_goal": r.get::<_, String>(1)?,
+                "status": r.get::<_, String>(2)?,
+                "session_json": r.get::<_, String>(3)?,
+                "uploaded_images_json": r.get::<_, String>(4)?,
+                "created_at": r.get::<_, i64>(5)?,
+                "updated_at": r.get::<_, i64>(6)?,
+            }))
+        })
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+fn export_group_characters(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
+    let conn = open_db(app)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at,
+                    archived, chat_type, starting_scene, background_image_path, speaker_selection_method, memory_type
+             FROM group_characters
+             ORDER BY updated_at DESC",
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(serde_json::json!({
+                "id": r.get::<_, String>(0)?,
+                "name": r.get::<_, String>(1)?,
+                "character_ids": r.get::<_, String>(2)?,
+                "muted_character_ids": r.get::<_, String>(3)?,
+                "persona_id": r.get::<_, Option<String>>(4)?,
+                "created_at": r.get::<_, i64>(5)?,
+                "updated_at": r.get::<_, i64>(6)?,
+                "archived": r.get::<_, i64>(7)? != 0,
+                "chat_type": r.get::<_, String>(8)?,
+                "starting_scene": r.get::<_, Option<String>>(9)?,
+                "background_image_path": r.get::<_, Option<String>>(10)?,
+                "speaker_selection_method": r.get::<_, Option<String>>(11)?,
+                "memory_type": r.get::<_, Option<String>>(12)?,
+            }))
+        })
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+fn export_model_pricing_cache(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
+    let conn = open_db(app)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT model_id, pricing_json, cached_at
+             FROM model_pricing_cache
+             ORDER BY cached_at DESC",
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(serde_json::json!({
+                "model_id": r.get::<_, String>(0)?,
+                "pricing_json": r.get::<_, Option<String>>(1)?,
+                "cached_at": r.get::<_, i64>(2)?,
+            }))
+        })
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
 /// Export full app backup to a .lettuce file
 #[tauri::command]
 pub async fn backup_export(
@@ -824,6 +1019,12 @@ pub async fn backup_export(
     let images_dir = storage.join("images");
     let avatars_dir = storage.join("avatars");
     let attachments_dir = storage.join("attachments");
+    let session_attachments_dir = storage.join("sessions");
+    let generated_images_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
+        .join("generated_images");
 
     // Generate timestamp for filename
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
@@ -883,6 +1084,10 @@ pub async fn backup_export(
     };
 
     // Export all tables to JSON
+    log_info(&app, "backup", "Exporting metadata...");
+    let meta = export_meta(&app)?;
+    add_json_to_zip(&mut zip, "meta", &serde_json::json!(meta), &encryption)?;
+
     log_info(&app, "backup", "Exporting settings...");
     let settings = export_settings(&app)?;
     add_json_to_zip(&mut zip, "settings", &settings, &encryption)?;
@@ -900,6 +1105,15 @@ pub async fn backup_export(
     let models = export_models(&app)?;
     add_json_to_zip(&mut zip, "models", &serde_json::json!(models), &encryption)?;
 
+    log_info(&app, "backup", "Exporting model pricing cache...");
+    let pricing_cache = export_model_pricing_cache(&app)?;
+    add_json_to_zip(
+        &mut zip,
+        "model_pricing_cache",
+        &serde_json::json!(pricing_cache),
+        &encryption,
+    )?;
+
     log_info(&app, "backup", "Exporting secrets...");
     let secrets = export_secrets(&app)?;
     add_json_to_zip(
@@ -915,6 +1129,15 @@ pub async fn backup_export(
         &mut zip,
         "prompt_templates",
         &serde_json::json!(templates),
+        &encryption,
+    )?;
+
+    log_info(&app, "backup", "Exporting chat templates...");
+    let chat_templates = export_chat_templates(&app)?;
+    add_json_to_zip(
+        &mut zip,
+        "chat_templates",
+        &serde_json::json!(chat_templates),
         &encryption,
     )?;
 
@@ -954,6 +1177,15 @@ pub async fn backup_export(
         &encryption,
     )?;
 
+    log_info(&app, "backup", "Exporting group character presets...");
+    let group_characters = export_group_characters(&app)?;
+    add_json_to_zip(
+        &mut zip,
+        "group_characters",
+        &serde_json::json!(group_characters),
+        &encryption,
+    )?;
+
     log_info(&app, "backup", "Exporting usage records...");
     let usage_data = export_usage_records(&app)?;
     add_json_to_zip(
@@ -978,6 +1210,15 @@ pub async fn backup_export(
         &mut zip,
         "character_lorebooks",
         &serde_json::json!(char_lorebooks),
+        &encryption,
+    )?;
+
+    log_info(&app, "backup", "Exporting creation helper sessions...");
+    let creation_helper_sessions = export_creation_helper_sessions(&app)?;
+    add_json_to_zip(
+        &mut zip,
+        "creation_helper_sessions",
+        &serde_json::json!(creation_helper_sessions),
         &encryption,
     )?;
 
@@ -1015,6 +1256,28 @@ pub async fn backup_export(
             encryption.as_ref(),
         )?;
         log_info(&app, "backup", "Added attachments to archive");
+    }
+
+    if session_attachments_dir.exists() {
+        add_directory_to_zip(
+            &mut zip,
+            &session_attachments_dir,
+            "sessions",
+            options,
+            encryption.as_ref(),
+        )?;
+        log_info(&app, "backup", "Added session attachments to archive");
+    }
+
+    if generated_images_dir.exists() {
+        add_directory_to_zip(
+            &mut zip,
+            &generated_images_dir,
+            "generated_images",
+            options,
+            encryption.as_ref(),
+        )?;
+        log_info(&app, "backup", "Added generated images to archive");
     }
 
     // Create manifest
@@ -1118,6 +1381,27 @@ fn add_directory_to_zip<W: Write + std::io::Seek>(
 // TABLE IMPORT FUNCTIONS - Import each table from JSON
 // ============================================================================
 
+fn import_meta(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), String> {
+    let conn = open_db(app)?;
+    conn.execute("DELETE FROM meta", [])
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    if let Some(arr) = data.as_array() {
+        for item in arr {
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES (?1, ?2)",
+                params![
+                    item.get("key").and_then(|v| v.as_str()),
+                    item.get("value").and_then(|v| v.as_str()),
+                ],
+            )
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        }
+    }
+
+    Ok(())
+}
+
 fn import_settings(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), String> {
     let conn = open_db(app)?;
     let now = std::time::SystemTime::now()
@@ -1144,7 +1428,7 @@ fn import_settings(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), Strin
     conn.execute(
         "INSERT INTO settings (id, default_provider_credential_id, default_model_id, app_state,
          prompt_template_id, system_prompt, migration_version,
-         advanced_settings, created_at, updated_at) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
+         advanced_settings, created_at, updated_at) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             data.get("default_provider_credential_id")
                 .and_then(|v| v.as_str()),
@@ -1156,7 +1440,13 @@ fn import_settings(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), Strin
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0),
             advanced_settings,
-            now,
+            data.get("created_at")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(now),
+            data.get("updated_at")
+                .and_then(|v| v.as_i64())
+                .or_else(|| data.get("created_at").and_then(|v| v.as_i64()))
+                .unwrap_or(now),
         ],
     )
     .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -1172,12 +1462,13 @@ fn import_provider_credentials(app: &tauri::AppHandle, data: &JsonValue) -> Resu
     if let Some(arr) = data.as_array() {
         for item in arr {
             conn.execute(
-                "INSERT INTO provider_credentials (id, provider_id, label, api_key, base_url, default_model, headers, config)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                "INSERT INTO provider_credentials (id, provider_id, label, api_key_ref, api_key, base_url, default_model, headers, config)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 params![
                     item.get("id").and_then(|v| v.as_str()),
                     item.get("provider_id").and_then(|v| v.as_str()),
                     item.get("label").and_then(|v| v.as_str()),
+                    item.get("api_key_ref").and_then(|v| v.as_str()),
                     item.get("api_key").and_then(|v| v.as_str()),
                     item.get("base_url").and_then(|v| v.as_str()),
                     item.get("default_model").and_then(|v| v.as_str()),
@@ -1260,7 +1551,9 @@ fn import_models(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), String>
                     item.get("display_name").and_then(|v| v.as_str()),
                     item.get("created_at").and_then(|v| v.as_i64()),
                     item.get("provider_credential_id").and_then(|v| v.as_str()),
-                    "chat",
+                    item.get("model_type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("chat"),
                     input_scopes,
                     output_scopes,
                     item.get("advanced_model_settings").and_then(|v| v.as_str()),
@@ -1404,10 +1697,11 @@ fn import_characters(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), Str
             // Insert character
             conn.execute(
                 "INSERT INTO characters (id, name, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, background_image_path, description, definition,
-                 default_scene_id, default_model_id, memory_type, prompt_template_id, system_prompt,
+                 nickname, scenario, creator_notes, creator, creator_notes_multilingual, source, tags,
+                 default_scene_id, default_model_id, fallback_model_id, memory_type, prompt_template_id, system_prompt,
                  voice_config, voice_autoplay, disable_avatar_gradient, custom_gradient_enabled, custom_gradient_colors,
-                 custom_text_color, custom_text_secondary, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
+                 custom_text_color, custom_text_secondary, chat_appearance, default_chat_template_id, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32)",
                 params![
                     char_id,
                     item.get("name").and_then(|v| v.as_str()),
@@ -1420,8 +1714,17 @@ fn import_characters(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), Str
                     item.get("definition")
                         .and_then(|v| v.as_str())
                         .or_else(|| item.get("description").and_then(|v| v.as_str())),
+                    item.get("nickname").and_then(|v| v.as_str()),
+                    item.get("scenario").and_then(|v| v.as_str()),
+                    item.get("creator_notes").and_then(|v| v.as_str()),
+                    item.get("creator").and_then(|v| v.as_str()),
+                    item.get("creator_notes_multilingual")
+                        .and_then(|v| v.as_str()),
+                    item.get("source").and_then(|v| v.as_str()),
+                    item.get("tags").and_then(|v| v.as_str()),
                     item.get("default_scene_id").and_then(|v| v.as_str()),
                     item.get("default_model_id").and_then(|v| v.as_str()),
+                    item.get("fallback_model_id").and_then(|v| v.as_str()),
                     item.get("memory_type").and_then(|v| v.as_str()).unwrap_or("manual"),
                     item.get("prompt_template_id").and_then(|v| v.as_str()),
                     item.get("system_prompt").and_then(|v| v.as_str()),
@@ -1435,6 +1738,9 @@ fn import_characters(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), Str
                     item.get("custom_gradient_colors").and_then(|v| v.as_str()),
                     item.get("custom_text_color").and_then(|v| v.as_str()),
                     item.get("custom_text_secondary").and_then(|v| v.as_str()),
+                    item.get("chat_appearance").and_then(|v| v.as_str()),
+                    item.get("default_chat_template_id")
+                        .and_then(|v| v.as_str()),
                     item.get("created_at").and_then(|v| v.as_i64()),
                     item.get("updated_at").and_then(|v| v.as_i64()),
                 ],
@@ -1551,10 +1857,10 @@ fn import_sessions(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), Strin
 
             conn.execute(
                 "INSERT INTO sessions (id, character_id, title, system_prompt, selected_scene_id, persona_id, persona_disabled, voice_autoplay,
-                 temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k,
+                 prompt_template_id, temperature, top_p, max_output_tokens, frequency_penalty, presence_penalty, top_k,
                  memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events,
                  memory_status, memory_error, archived, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
                 params![
                     session_id,
                     character_id,
@@ -1566,6 +1872,7 @@ fn import_sessions(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), Strin
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false) as i64,
                     voice_autoplay,
+                    item.get("prompt_template_id").and_then(|v| v.as_str()),
                     item.get("temperature").and_then(|v| v.as_f64()),
                     item.get("top_p").and_then(|v| v.as_f64()),
                     item.get("max_output_tokens").and_then(|v| v.as_i64()),
@@ -1689,12 +1996,13 @@ fn import_group_sessions(app: &tauri::AppHandle, data: &JsonValue) -> Result<(),
             let session_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
 
             conn.execute(
-                "INSERT INTO group_sessions (id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at, archived,
+                "INSERT INTO group_sessions (id, group_character_id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at, archived,
                  chat_type, starting_scene, background_image_path,
-                 memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                 memories, memory_embeddings, memory_summary, memory_summary_token_count, memory_tool_events, speaker_selection_method, memory_type)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
                 params![
                     session_id,
+                    item.get("group_character_id").and_then(|v| v.as_str()),
                     item.get("name").and_then(|v| v.as_str()).unwrap_or("Group Chat"),
                     item.get("character_ids").and_then(|v| v.as_str()).unwrap_or("[]"),
                     item.get("muted_character_ids")
@@ -1712,6 +2020,12 @@ fn import_group_sessions(app: &tauri::AppHandle, data: &JsonValue) -> Result<(),
                     item.get("memory_summary").and_then(|v| v.as_str()).unwrap_or(""),
                     item.get("memory_summary_token_count").and_then(|v| v.as_i64()).unwrap_or(0),
                     item.get("memory_tool_events").and_then(|v| v.as_str()).unwrap_or("[]"),
+                    item.get("speaker_selection_method")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("llm"),
+                    item.get("memory_type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("manual"),
                 ],
             )
             .map_err(|e| crate::utils::err_msg(module_path!(), line!(), format!("Failed to insert group session {}: {}", session_id, e)))?;
@@ -1823,10 +2137,10 @@ fn import_usage_records(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), 
             // Insert usage record
             conn.execute(
                 "INSERT INTO usage_records (id, timestamp, session_id, character_id, character_name,
-                 model_id, model_name, provider_id, provider_label, operation_type, prompt_tokens,
-                 completion_tokens, total_tokens, memory_tokens, summary_tokens, reasoning_tokens,
+                 model_id, model_name, provider_id, provider_label, operation_type, finish_reason, prompt_tokens,
+                 completion_tokens, total_tokens, memory_tokens, summary_tokens, reasoning_tokens, image_tokens,
                  prompt_cost, completion_cost, total_cost, success, error_message)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
                 params![
                     record_id,
                     item.get("timestamp").and_then(|v| v.as_i64()),
@@ -1838,12 +2152,14 @@ fn import_usage_records(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), 
                     item.get("provider_id").and_then(|v| v.as_str()),
                     item.get("provider_label").and_then(|v| v.as_str()),
                     item.get("operation_type").and_then(|v| v.as_str()),
+                    item.get("finish_reason").and_then(|v| v.as_str()),
                     item.get("prompt_tokens").and_then(|v| v.as_i64()),
                     item.get("completion_tokens").and_then(|v| v.as_i64()),
                     item.get("total_tokens").and_then(|v| v.as_i64()),
                     item.get("memory_tokens").and_then(|v| v.as_i64()),
                     item.get("summary_tokens").and_then(|v| v.as_i64()),
                     item.get("reasoning_tokens").and_then(|v| v.as_i64()),
+                    item.get("image_tokens").and_then(|v| v.as_i64()),
                     item.get("prompt_cost").and_then(|v| v.as_f64()),
                     item.get("completion_cost").and_then(|v| v.as_f64()),
                     item.get("total_cost").and_then(|v| v.as_f64()),
@@ -1900,14 +2216,18 @@ fn import_lorebooks(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), Stri
             if let Some(entries) = item.get("entries").and_then(|v| v.as_array()) {
                 for entry in entries {
                     conn.execute(
-                        "INSERT INTO lorebook_entries (id, lorebook_id, enabled, always_active, keywords, content, priority, display_order, created_at, updated_at)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                        "INSERT INTO lorebook_entries (id, lorebook_id, title, enabled, always_active, keywords, case_sensitive, content, priority, display_order, created_at, updated_at)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                         params![
                             entry.get("id").and_then(|v| v.as_str()),
                             lorebook_id,
+                            entry.get("title").and_then(|v| v.as_str()).unwrap_or(""),
                             entry.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true) as i64,
                             entry.get("always_active").and_then(|v| v.as_bool()).unwrap_or(false) as i64,
                             entry.get("keywords").and_then(|v| v.as_str()).unwrap_or("[]"),
+                            entry.get("case_sensitive")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false) as i64,
                             entry.get("content").and_then(|v| v.as_str()),
                             entry.get("priority").and_then(|v| v.as_i64()).unwrap_or(0),
                             entry.get("display_order").and_then(|v| v.as_i64()).unwrap_or(0),
@@ -1945,6 +2265,147 @@ fn import_character_lorebooks(app: &tauri::AppHandle, data: &JsonValue) -> Resul
             ).map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
         }
     }
+    Ok(())
+}
+
+fn import_chat_templates(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), String> {
+    let conn = open_db(app)?;
+    conn.execute("DELETE FROM chat_template_messages", [])
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    conn.execute("DELETE FROM chat_templates", [])
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    if let Some(arr) = data.as_array() {
+        for item in arr {
+            let template_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            conn.execute(
+                "INSERT INTO chat_templates (id, character_id, name, scene_id, prompt_template_id, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    template_id,
+                    item.get("character_id").and_then(|v| v.as_str()),
+                    item.get("name").and_then(|v| v.as_str()),
+                    item.get("scene_id").and_then(|v| v.as_str()),
+                    item.get("prompt_template_id").and_then(|v| v.as_str()),
+                    item.get("created_at").and_then(|v| v.as_i64()),
+                ],
+            )
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+            if let Some(messages) = item.get("messages").and_then(|v| v.as_array()) {
+                for (fallback_idx, message) in messages.iter().enumerate() {
+                    conn.execute(
+                        "INSERT INTO chat_template_messages (id, template_id, idx, role, content)
+                         VALUES (?1, ?2, ?3, ?4, ?5)",
+                        params![
+                            message.get("id").and_then(|v| v.as_str()),
+                            template_id,
+                            message
+                                .get("idx")
+                                .and_then(|v| v.as_i64())
+                                .unwrap_or(fallback_idx as i64),
+                            message.get("role").and_then(|v| v.as_str()),
+                            message.get("content").and_then(|v| v.as_str()),
+                        ],
+                    )
+                    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn import_creation_helper_sessions(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), String> {
+    let conn = open_db(app)?;
+    conn.execute("DELETE FROM creation_helper_sessions", [])
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    if let Some(arr) = data.as_array() {
+        for item in arr {
+            conn.execute(
+                "INSERT INTO creation_helper_sessions (id, creation_goal, status, session_json, uploaded_images_json, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    item.get("id").and_then(|v| v.as_str()),
+                    item.get("creation_goal").and_then(|v| v.as_str()),
+                    item.get("status").and_then(|v| v.as_str()),
+                    item.get("session_json").and_then(|v| v.as_str()),
+                    item.get("uploaded_images_json").and_then(|v| v.as_str()),
+                    item.get("created_at").and_then(|v| v.as_i64()),
+                    item.get("updated_at").and_then(|v| v.as_i64()),
+                ],
+            )
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        }
+    }
+
+    Ok(())
+}
+
+fn import_group_characters(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), String> {
+    let conn = open_db(app)?;
+    conn.execute("DELETE FROM group_characters", [])
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    if let Some(arr) = data.as_array() {
+        for item in arr {
+            conn.execute(
+                "INSERT INTO group_characters (id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at, archived,
+                 chat_type, starting_scene, background_image_path, speaker_selection_method, memory_type)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                params![
+                    item.get("id").and_then(|v| v.as_str()),
+                    item.get("name").and_then(|v| v.as_str()),
+                    item.get("character_ids").and_then(|v| v.as_str()).unwrap_or("[]"),
+                    item.get("muted_character_ids")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("[]"),
+                    item.get("persona_id").and_then(|v| v.as_str()),
+                    item.get("created_at").and_then(|v| v.as_i64()),
+                    item.get("updated_at").and_then(|v| v.as_i64()),
+                    item.get("archived").and_then(|v| v.as_bool()).unwrap_or(false) as i64,
+                    item.get("chat_type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("conversation"),
+                    item.get("starting_scene").and_then(|v| v.as_str()),
+                    item.get("background_image_path").and_then(|v| v.as_str()),
+                    item.get("speaker_selection_method")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("llm"),
+                    item.get("memory_type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("manual"),
+                ],
+            )
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        }
+    }
+
+    Ok(())
+}
+
+fn import_model_pricing_cache(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), String> {
+    let conn = open_db(app)?;
+    conn.execute("DELETE FROM model_pricing_cache", [])
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    if let Some(arr) = data.as_array() {
+        for item in arr {
+            conn.execute(
+                "INSERT INTO model_pricing_cache (model_id, pricing_json, cached_at)
+                 VALUES (?1, ?2, ?3)",
+                params![
+                    item.get("model_id").and_then(|v| v.as_str()),
+                    item.get("pricing_json").and_then(|v| v.as_str()),
+                    item.get("cached_at").and_then(|v| v.as_i64()),
+                ],
+            )
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        }
+    }
+
     Ok(())
 }
 
@@ -2100,6 +2561,8 @@ pub fn backup_get_info(
     let mut image_count = 0;
     let mut avatar_count = 0;
     let mut attachment_count = 0;
+    let mut session_attachment_count = 0;
+    let mut generated_image_count = 0;
 
     for i in 0..archive.len() {
         if let Ok(file) = archive.by_index(i) {
@@ -2110,6 +2573,10 @@ pub fn backup_get_info(
                 avatar_count += 1;
             } else if name.starts_with("attachments/") {
                 attachment_count += 1;
+            } else if name.starts_with("sessions/") {
+                session_attachment_count += 1;
+            } else if name.starts_with("generated_images/") {
+                generated_image_count += 1;
             }
         }
     }
@@ -2123,6 +2590,8 @@ pub fn backup_get_info(
         "imageCount": image_count,
         "avatarCount": avatar_count,
         "attachmentCount": attachment_count,
+        "sessionAttachmentCount": session_attachment_count,
+        "generatedImageCount": generated_image_count,
     }))
 }
 
@@ -2285,6 +2754,7 @@ pub async fn backup_import(
     log_info(&app, "backup", "Reading JSON data files...");
 
     // Read all JSON data files
+    let meta_data = read_backup_file(&mut archive, "data/meta.json", &encryption_params)?;
     let settings_data = read_backup_file(&mut archive, "data/settings.json", &encryption_params)?;
     let provider_credentials_data = read_backup_file(
         &mut archive,
@@ -2292,16 +2762,33 @@ pub async fn backup_import(
         &encryption_params,
     )?;
     let models_data = read_backup_file(&mut archive, "data/models.json", &encryption_params)?;
+    let model_pricing_cache_data = read_backup_file(
+        &mut archive,
+        "data/model_pricing_cache.json",
+        &encryption_params,
+    )?;
     let secrets_data = read_backup_file(&mut archive, "data/secrets.json", &encryption_params)?;
     let prompt_templates_data = read_backup_file(
         &mut archive,
         "data/prompt_templates.json",
         &encryption_params,
     )?;
+    let chat_templates_data =
+        read_backup_file(&mut archive, "data/chat_templates.json", &encryption_params)?;
     let personas_data = read_backup_file(&mut archive, "data/personas.json", &encryption_params)?;
     let characters_data =
         read_backup_file(&mut archive, "data/characters.json", &encryption_params)?;
     let sessions_data = read_backup_file(&mut archive, "data/sessions.json", &encryption_params)?;
+    let creation_helper_sessions_data = read_backup_file(
+        &mut archive,
+        "data/creation_helper_sessions.json",
+        &encryption_params,
+    )?;
+    let group_characters_data = read_backup_file(
+        &mut archive,
+        "data/group_characters.json",
+        &encryption_params,
+    )?;
     let group_sessions_data =
         read_backup_file(&mut archive, "data/group_sessions.json", &encryption_params)?;
     let usage_records_data =
@@ -2316,6 +2803,23 @@ pub async fn backup_import(
     log_info(&app, "backup", "Importing data to database...");
 
     // Import data in correct order (respecting foreign key constraints)
+    if let Some(data) = meta_data {
+        log_info(&app, "backup", "Found meta data");
+        let json_str = String::from_utf8(data)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        let json_value: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to parse meta JSON: {}", e),
+            )
+        })?;
+        import_meta(&app, &json_value)?;
+        log_info(&app, "backup", "Meta imported");
+    } else {
+        log_info(&app, "backup", "No meta data found");
+    }
+
     // Settings first (no dependencies)
     if let Some(data) = settings_data {
         log_info(&app, "backup", "Found settings data");
@@ -2368,6 +2872,23 @@ pub async fn backup_import(
         log_info(&app, "backup", "Models imported");
     } else {
         log_info(&app, "backup", "No models data found");
+    }
+
+    if let Some(data) = model_pricing_cache_data {
+        log_info(&app, "backup", "Found model_pricing_cache data");
+        let json_str = String::from_utf8(data)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        let json_value: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to parse model_pricing_cache JSON: {}", e),
+            )
+        })?;
+        import_model_pricing_cache(&app, &json_value)?;
+        log_info(&app, "backup", "Model pricing cache imported");
+    } else {
+        log_info(&app, "backup", "No model_pricing_cache data found");
     }
 
     // Secrets (no dependencies)
@@ -2442,6 +2963,23 @@ pub async fn backup_import(
         log_info(&app, "backup", "No characters data found");
     }
 
+    if let Some(data) = chat_templates_data {
+        log_info(&app, "backup", "Found chat_templates data");
+        let json_str = String::from_utf8(data)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        let json_value: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to parse chat_templates JSON: {}", e),
+            )
+        })?;
+        import_chat_templates(&app, &json_value)?;
+        log_info(&app, "backup", "Chat templates imported");
+    } else {
+        log_info(&app, "backup", "No chat_templates data found");
+    }
+
     // Sessions (depends on personas and characters)
     if let Some(data) = sessions_data {
         log_info(&app, "backup", "Found sessions data");
@@ -2458,6 +2996,40 @@ pub async fn backup_import(
         log_info(&app, "backup", "Sessions imported");
     } else {
         log_info(&app, "backup", "No sessions data found");
+    }
+
+    if let Some(data) = creation_helper_sessions_data {
+        log_info(&app, "backup", "Found creation_helper_sessions data");
+        let json_str = String::from_utf8(data)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        let json_value: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to parse creation_helper_sessions JSON: {}", e),
+            )
+        })?;
+        import_creation_helper_sessions(&app, &json_value)?;
+        log_info(&app, "backup", "Creation helper sessions imported");
+    } else {
+        log_info(&app, "backup", "No creation_helper_sessions data found");
+    }
+
+    if let Some(data) = group_characters_data {
+        log_info(&app, "backup", "Found group_characters data");
+        let json_str = String::from_utf8(data)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        let json_value: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to parse group_characters JSON: {}", e),
+            )
+        })?;
+        import_group_characters(&app, &json_value)?;
+        log_info(&app, "backup", "Group character presets imported");
+    } else {
+        log_info(&app, "backup", "No group_characters data found");
     }
 
     // Group sessions (depends on personas and characters)
@@ -2558,7 +3130,9 @@ pub async fn backup_import(
         // Only process media directories
         let is_media = file_name.starts_with("images/")
             || file_name.starts_with("avatars/")
-            || file_name.starts_with("attachments/");
+            || file_name.starts_with("attachments/")
+            || file_name.starts_with("sessions/")
+            || file_name.starts_with("generated_images/");
 
         if !is_media {
             continue;
@@ -2609,6 +3183,12 @@ pub async fn backup_import(
     let images_dir = storage.join("images");
     let avatars_dir = storage.join("avatars");
     let attachments_dir = storage.join("attachments");
+    let sessions_dir = storage.join("sessions");
+    let generated_images_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
+        .join("generated_images");
 
     // Clear existing media directories
     if images_dir.exists() {
@@ -2640,6 +3220,26 @@ pub async fn backup_import(
     if staged_attachments.exists() {
         copy_dir_all(&staged_attachments, &attachments_dir)?;
         log_info(&app, "backup", "Attachments restored");
+    }
+
+    let staged_sessions = staging_dir.join("sessions");
+    if staged_sessions.exists() {
+        if sessions_dir.exists() {
+            fs::remove_dir_all(&sessions_dir)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        }
+        copy_dir_all(&staged_sessions, &sessions_dir)?;
+        log_info(&app, "backup", "Session attachments restored");
+    }
+
+    let staged_generated_images = staging_dir.join("generated_images");
+    if staged_generated_images.exists() {
+        if generated_images_dir.exists() {
+            fs::remove_dir_all(&generated_images_dir)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        }
+        copy_dir_all(&staged_generated_images, &generated_images_dir)?;
+        log_info(&app, "backup", "Generated images restored");
     }
 
     fs::remove_dir_all(&staging_dir).ok();
@@ -2819,6 +3419,8 @@ pub fn backup_get_info_from_bytes(data: Vec<u8>) -> Result<serde_json::Value, St
     let mut image_count = 0;
     let mut avatar_count = 0;
     let mut attachment_count = 0;
+    let mut session_attachment_count = 0;
+    let mut generated_image_count = 0;
 
     for i in 0..archive.len() {
         if let Ok(file) = archive.by_index(i) {
@@ -2831,6 +3433,10 @@ pub fn backup_get_info_from_bytes(data: Vec<u8>) -> Result<serde_json::Value, St
                     avatar_count += 1;
                 } else if name.starts_with("attachments/") {
                     attachment_count += 1;
+                } else if name.starts_with("sessions/") {
+                    session_attachment_count += 1;
+                } else if name.starts_with("generated_images/") {
+                    generated_image_count += 1;
                 }
             }
         }
@@ -2845,6 +3451,8 @@ pub fn backup_get_info_from_bytes(data: Vec<u8>) -> Result<serde_json::Value, St
         "imageCount": image_count,
         "avatarCount": avatar_count,
         "attachmentCount": attachment_count,
+        "sessionAttachmentCount": session_attachment_count,
+        "generatedImageCount": generated_image_count,
     }))
 }
 
@@ -3108,17 +3716,29 @@ pub async fn backup_import_from_bytes(
     log_info(&app, "backup", "Reading JSON data files...");
 
     // Read all JSON data files
+    let meta_data = read_backup_file_bytes(&data, "data/meta.json", &encryption_params)?;
     let settings_data = read_backup_file_bytes(&data, "data/settings.json", &encryption_params)?;
     let provider_credentials_data =
         read_backup_file_bytes(&data, "data/provider_credentials.json", &encryption_params)?;
     let models_data = read_backup_file_bytes(&data, "data/models.json", &encryption_params)?;
+    let model_pricing_cache_data =
+        read_backup_file_bytes(&data, "data/model_pricing_cache.json", &encryption_params)?;
     let secrets_data = read_backup_file_bytes(&data, "data/secrets.json", &encryption_params)?;
     let prompt_templates_data =
         read_backup_file_bytes(&data, "data/prompt_templates.json", &encryption_params)?;
+    let chat_templates_data =
+        read_backup_file_bytes(&data, "data/chat_templates.json", &encryption_params)?;
     let personas_data = read_backup_file_bytes(&data, "data/personas.json", &encryption_params)?;
     let characters_data =
         read_backup_file_bytes(&data, "data/characters.json", &encryption_params)?;
     let sessions_data = read_backup_file_bytes(&data, "data/sessions.json", &encryption_params)?;
+    let creation_helper_sessions_data = read_backup_file_bytes(
+        &data,
+        "data/creation_helper_sessions.json",
+        &encryption_params,
+    )?;
+    let group_characters_data =
+        read_backup_file_bytes(&data, "data/group_characters.json", &encryption_params)?;
     let group_sessions_data =
         read_backup_file_bytes(&data, "data/group_sessions.json", &encryption_params)?;
     let usage_records_data =
@@ -3130,6 +3750,20 @@ pub async fn backup_import_from_bytes(
     log_info(&app, "backup", "Importing data to database...");
 
     // Import data in correct order (respecting foreign key constraints)
+    if let Some(file_data) = meta_data {
+        let json_str = String::from_utf8(file_data)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        let json_value: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to parse meta JSON: {}", e),
+            )
+        })?;
+        import_meta(&app, &json_value)?;
+        log_info(&app, "backup", "Meta imported");
+    }
+
     if let Some(file_data) = settings_data {
         let json_str = String::from_utf8(file_data)
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -3170,6 +3804,20 @@ pub async fn backup_import_from_bytes(
         })?;
         import_models(&app, &json_value)?;
         log_info(&app, "backup", "Models imported");
+    }
+
+    if let Some(file_data) = model_pricing_cache_data {
+        let json_str = String::from_utf8(file_data)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        let json_value: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to parse model_pricing_cache JSON: {}", e),
+            )
+        })?;
+        import_model_pricing_cache(&app, &json_value)?;
+        log_info(&app, "backup", "Model pricing cache imported");
     }
 
     if let Some(file_data) = secrets_data {
@@ -3228,6 +3876,20 @@ pub async fn backup_import_from_bytes(
         log_info(&app, "backup", "Characters imported");
     }
 
+    if let Some(file_data) = chat_templates_data {
+        let json_str = String::from_utf8(file_data)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        let json_value: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to parse chat_templates JSON: {}", e),
+            )
+        })?;
+        import_chat_templates(&app, &json_value)?;
+        log_info(&app, "backup", "Chat templates imported");
+    }
+
     if let Some(file_data) = sessions_data {
         let json_str = String::from_utf8(file_data)
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -3240,6 +3902,34 @@ pub async fn backup_import_from_bytes(
         })?;
         import_sessions(&app, &json_value)?;
         log_info(&app, "backup", "Sessions imported");
+    }
+
+    if let Some(file_data) = creation_helper_sessions_data {
+        let json_str = String::from_utf8(file_data)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        let json_value: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to parse creation_helper_sessions JSON: {}", e),
+            )
+        })?;
+        import_creation_helper_sessions(&app, &json_value)?;
+        log_info(&app, "backup", "Creation helper sessions imported");
+    }
+
+    if let Some(file_data) = group_characters_data {
+        let json_str = String::from_utf8(file_data)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        let json_value: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+            crate::utils::err_msg(
+                module_path!(),
+                line!(),
+                format!("Failed to parse group_characters JSON: {}", e),
+            )
+        })?;
+        import_group_characters(&app, &json_value)?;
+        log_info(&app, "backup", "Group character presets imported");
     }
 
     if let Some(file_data) = group_sessions_data {
@@ -3325,7 +4015,9 @@ pub async fn backup_import_from_bytes(
         // Only process media directories
         let is_media = file_name.starts_with("images/")
             || file_name.starts_with("avatars/")
-            || file_name.starts_with("attachments/");
+            || file_name.starts_with("attachments/")
+            || file_name.starts_with("sessions/")
+            || file_name.starts_with("generated_images/");
 
         if !is_media {
             continue;
@@ -3376,6 +4068,12 @@ pub async fn backup_import_from_bytes(
     let images_dir = storage.join("images");
     let avatars_dir = storage.join("avatars");
     let attachments_dir = storage.join("attachments");
+    let sessions_dir = storage.join("sessions");
+    let generated_images_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
+        .join("generated_images");
 
     // Clear existing media directories
     if images_dir.exists() {
@@ -3407,6 +4105,26 @@ pub async fn backup_import_from_bytes(
     if staged_attachments.exists() {
         copy_dir_all(&staged_attachments, &attachments_dir)?;
         log_info(&app, "backup", "Attachments restored");
+    }
+
+    let staged_sessions = staging_dir.join("sessions");
+    if staged_sessions.exists() {
+        if sessions_dir.exists() {
+            fs::remove_dir_all(&sessions_dir)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        }
+        copy_dir_all(&staged_sessions, &sessions_dir)?;
+        log_info(&app, "backup", "Session attachments restored");
+    }
+
+    let staged_generated_images = staging_dir.join("generated_images");
+    if staged_generated_images.exists() {
+        if generated_images_dir.exists() {
+            fs::remove_dir_all(&generated_images_dir)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        }
+        copy_dir_all(&staged_generated_images, &generated_images_dir)?;
+        log_info(&app, "backup", "Generated images restored");
     }
 
     // Cleanup staging
