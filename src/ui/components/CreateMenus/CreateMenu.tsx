@@ -148,7 +148,7 @@ export function CreateMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () =
     try {
       setIsImportingLorebook(true);
       const raw = await readFileAsText(file);
-      const imported = await importLorebook(raw);
+      const imported = await importLorebook(raw, file.name);
       navigate(`/library/lorebooks/${imported.id}`);
       handleClose();
     } catch (error) {
@@ -162,9 +162,21 @@ export function CreateMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () =
   };
 
   const goalMeta: Record<CreationGoal, { label: string; color: string; icon: typeof Sparkles }> = {
-    character: { label: t("components.createMenu.character"), color: "from-rose-500 to-rose-600", icon: Sparkles },
-    persona: { label: t("components.createMenu.persona"), color: "from-purple-500 to-purple-600", icon: Brain },
-    lorebook: { label: t("components.createMenu.lorebook"), color: "from-amber-500 to-amber-600", icon: BookOpen },
+    character: {
+      label: t("components.createMenu.character"),
+      color: "from-rose-500 to-rose-600",
+      icon: Sparkles,
+    },
+    persona: {
+      label: t("components.createMenu.persona"),
+      color: "from-purple-500 to-purple-600",
+      icon: Brain,
+    },
+    lorebook: {
+      label: t("components.createMenu.lorebook"),
+      color: "from-amber-500 to-amber-600",
+      icon: BookOpen,
+    },
   };
 
   const formatTimeAgo = (timestamp: number): string => {
@@ -231,7 +243,12 @@ export function CreateMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () =
         );
       } else {
         const items = await listLorebooks();
-        setEditTargets(items.map((l) => ({ id: l.id, title: l.name || t("components.createMenu.untitledLorebook") })));
+        setEditTargets(
+          items.map((l) => ({
+            id: l.id,
+            title: l.name || t("components.createMenu.untitledLorebook"),
+          })),
+        );
       }
     } catch (err) {
       console.error("Failed to load edit targets:", err);
@@ -255,7 +272,9 @@ export function CreateMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () =
   };
 
   const latestIncomplete = goalSessions.find((session) => session.status !== "completed") ?? null;
-  const selectedGoalLabel = selectedGoal ? goalMeta[selectedGoal].label : t("components.createMenu.smartCreator");
+  const selectedGoalLabel = selectedGoal
+    ? goalMeta[selectedGoal].label
+    : t("components.createMenu.smartCreator");
   const historyTitle = t("components.createMenu.conversationsTitle", { goal: selectedGoalLabel });
 
   return (
@@ -475,11 +494,17 @@ export function CreateMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () =
           {loadingEditTargets ? (
             <div className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 py-5 text-sm text-white/70">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>{t("components.createMenu.loadingItems", { items: selectedGoalLabel.toLowerCase() + "s" })}</span>
+              <span>
+                {t("components.createMenu.loadingItems", {
+                  items: selectedGoalLabel.toLowerCase() + "s",
+                })}
+              </span>
             </div>
           ) : editTargets.length === 0 ? (
             <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white/65">
-              {t("components.createMenu.noItemsFound", { items: selectedGoalLabel.toLowerCase() + "s" })}
+              {t("components.createMenu.noItemsFound", {
+                items: selectedGoalLabel.toLowerCase() + "s",
+              })}
             </div>
           ) : (
             <>
@@ -532,7 +557,9 @@ export function CreateMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () =
               ) : (
                 <Upload className="h-4 w-4" />
               )}
-              {isImportingLorebook ? t("components.createMenu.lorebookImporting") : t("components.createMenu.lorebookImport")}
+              {isImportingLorebook
+                ? t("components.createMenu.lorebookImporting")
+                : t("components.createMenu.lorebookImport")}
             </button>
             <button
               onClick={handleCreateLorebook}
@@ -540,7 +567,9 @@ export function CreateMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () =
               className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/20 py-3 text-sm font-medium text-emerald-100 transition hover:border-emerald-500/50 hover:bg-emerald-500/30 disabled:opacity-50"
             >
               {isCreating && <Loader2 className="h-4 w-4 animate-spin" />}
-              {isCreating ? t("components.createMenu.lorebookCreating") : t("components.createMenu.lorebookCreate")}
+              {isCreating
+                ? t("components.createMenu.lorebookCreating")
+                : t("components.createMenu.lorebookCreate")}
             </button>
             <input
               ref={lorebookImportInputRef}

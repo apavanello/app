@@ -232,7 +232,7 @@ export function LibraryPage() {
     try {
       setImportingLorebook(true);
       const raw = await readFileAsText(file);
-      const imported = await importLorebook(raw);
+      const imported = await importLorebook(raw, file.name);
       await loadData();
       navigate(`/library/lorebooks/${imported.id}`);
     } catch (err) {
@@ -315,7 +315,9 @@ export function LibraryPage() {
                 className="mb-3 flex items-center gap-2 rounded-xl border border-info/40 bg-info/20 px-5 py-2.5 text-sm font-medium text-info transition active:scale-95 active:bg-info/30 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <Upload className="h-4 w-4" />
-                {importingLorebook ? t("common.buttons.importing") : t("library.actions.importLorebook")}
+                {importingLorebook
+                  ? t("common.buttons.importing")
+                  : t("library.actions.importLorebook")}
               </button>
             )}
             {filter !== "Lorebooks" && (
@@ -326,7 +328,9 @@ export function LibraryPage() {
                 className="flex items-center gap-2 rounded-xl border border-accent/40 bg-accent/20 px-5 py-2.5 text-sm font-medium text-accent/70 transition active:scale-95 active:bg-accent/30"
               >
                 <Users className="h-4 w-4" />
-                {filter === "Personas" ? t("personas.empty.createButton") : t("characters.empty.createButton")}
+                {filter === "Personas"
+                  ? t("personas.empty.createButton")
+                  : t("characters.empty.createButton")}
               </button>
             )}
             <input
@@ -370,20 +374,20 @@ export function LibraryPage() {
               Lorebooks: t("library.filters.lorebooks"),
             };
             return (
-            <button
-              key={option}
-              onClick={() => {
-                setFilter(option);
-                setShowFilterMenu(false);
-              }}
-              className={cn(
-                "flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition",
-                filter === option ? "bg-fg/10 text-fg" : "text-fg/60 hover:bg-fg/5 hover:text-fg",
-              )}
-            >
-              <span className="text-sm font-medium">{filterLabels[option]}</span>
-              {filter === option && <Check className="h-4 w-4 text-accent" />}
-            </button>
+              <button
+                key={option}
+                onClick={() => {
+                  setFilter(option);
+                  setShowFilterMenu(false);
+                }}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition",
+                  filter === option ? "bg-fg/10 text-fg" : "text-fg/60 hover:bg-fg/5 hover:text-fg",
+                )}
+              >
+                <span className="text-sm font-medium">{filterLabels[option]}</span>
+                {filter === option && <Check className="h-4 w-4 text-accent" />}
+              </button>
             );
           })}
         </div>
@@ -405,7 +409,9 @@ export function LibraryPage() {
                 <div className="flex h-8 w-8 items-center justify-center rounded-full border border-accent/30 bg-accent/20">
                   <MessageCircle className="h-4 w-4 text-accent" />
                 </div>
-                <span className="text-sm font-medium text-accent">{t("library.actions.startChat")}</span>
+                <span className="text-sm font-medium text-accent">
+                  {t("library.actions.startChat")}
+                </span>
               </button>
             )}
 
@@ -437,7 +443,9 @@ export function LibraryPage() {
                 <div className="flex h-8 w-8 items-center justify-center rounded-full border border-fg/10 bg-fg/10">
                   <Pencil className="h-4 w-4 text-fg/70" />
                 </div>
-                <span className="text-sm font-medium text-fg">{t("library.actions.renameLorebook")}</span>
+                <span className="text-sm font-medium text-fg">
+                  {t("library.actions.renameLorebook")}
+                </span>
               </button>
             )}
 
@@ -468,7 +476,9 @@ export function LibraryPage() {
                 <div className="flex h-8 w-8 items-center justify-center rounded-full border border-secondary/30 bg-secondary/20">
                   <Paintbrush className="h-4 w-4 text-secondary" />
                 </div>
-                <span className="text-sm font-medium text-secondary">{t("library.actions.chatAppearance")}</span>
+                <span className="text-sm font-medium text-secondary">
+                  {t("library.actions.chatAppearance")}
+                </span>
               </button>
             )}
 
@@ -520,11 +530,19 @@ export function LibraryPage() {
       <BottomMenu
         isOpen={showDeleteConfirm}
         onClose={() => setShowDeleteConfirm(false)}
-        title={t("library.deleteConfirm.title", { itemType: selectedItem?.itemType === "character" ? t("library.itemTypes.character") : selectedItem?.itemType === "persona" ? t("library.itemTypes.persona") : t("library.itemTypes.lorebook") })}
+        title={t("library.deleteConfirm.title", {
+          itemType:
+            selectedItem?.itemType === "character"
+              ? t("library.itemTypes.character")
+              : selectedItem?.itemType === "persona"
+                ? t("library.itemTypes.persona")
+                : t("library.itemTypes.lorebook"),
+        })}
       >
         <div className="space-y-4">
           <p className="text-sm text-fg/70">
-            {t("library.deleteConfirm.message")} &quot;{selectedItem ? getItemName(selectedItem) : ""}&quot;?
+            {t("library.deleteConfirm.message")} &quot;
+            {selectedItem ? getItemName(selectedItem) : ""}&quot;?
             {selectedItem?.itemType === "character" &&
               ` ${t("library.deleteConfirm.characterWarning")}`}
           </p>
@@ -598,7 +616,10 @@ function getItemDescription(item: LibraryItem, t?: (key: any) => string): string
   if (item.itemType === "lorebook") return t ? t("library.lorebookLabel") : "Lorebook";
   if (item.itemType === "character") {
     const character = item as Character;
-    return (character.description || character.definition || "").trim() || (t ? t("library.noDescriptionYet") : "No description yet");
+    return (
+      (character.description || character.definition || "").trim() ||
+      (t ? t("library.noDescriptionYet") : "No description yet")
+    );
   }
   const persona = item as Persona;
   return persona.description.trim() || (t ? t("library.noDescriptionYet") : "No description yet");

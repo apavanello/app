@@ -10,9 +10,34 @@ export async function exportLorebook(lorebookId: string): Promise<string> {
   }
 }
 
-export async function importLorebook(importJson: string): Promise<Lorebook> {
+function filenameToLorebookName(filename: string): string {
+  const trimmed = filename.trim();
+  if (!trimmed) return "";
+  return trimmed.replace(/\.[^/.]+$/, "").trim();
+}
+
+export async function importLorebook(
+  importJson: string,
+  fallbackFilename?: string,
+): Promise<Lorebook> {
   try {
-    const lorebookJson = await invoke<string>("lorebook_import", { importJson });
+    let normalizedImportJson = importJson;
+
+    if (fallbackFilename && fallbackFilename.trim()) {
+      const parsed = JSON.parse(importJson) as { name?: unknown };
+      const hasName = typeof parsed.name === "string" && parsed.name.trim().length > 0;
+      if (!hasName) {
+        const fallbackName = filenameToLorebookName(fallbackFilename);
+        if (fallbackName) {
+          parsed.name = fallbackName;
+          normalizedImportJson = JSON.stringify(parsed);
+        }
+      }
+    }
+
+    const lorebookJson = await invoke<string>("lorebook_import", {
+      importJson: normalizedImportJson,
+    });
     return JSON.parse(lorebookJson) as Lorebook;
   } catch (error) {
     console.error("[importLorebook] Failed to import lorebook:", error);

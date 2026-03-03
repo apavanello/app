@@ -67,7 +67,9 @@ function KeywordTagInput({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <label className="text-[11px] font-medium text-fg/70">{t("characters.lorebook.keywords")}</label>
+        <label className="text-[11px] font-medium text-fg/70">
+          {t("characters.lorebook.keywords")}
+        </label>
         <div className="flex items-center gap-2">
           <span className="text-xs text-fg/50">{t("characters.lorebook.caseSensitive")}</span>
           <label
@@ -160,7 +162,9 @@ function EntryEditorMenu({
       <div className="space-y-4">
         {/* Title */}
         <div className="space-y-2">
-          <label className="text-[11px] font-medium text-fg/70">{t("characters.lorebook.titleLabel")}</label>
+          <label className="text-[11px] font-medium text-fg/70">
+            {t("characters.lorebook.titleLabel")}
+          </label>
           <input
             value={draft.title || ""}
             onChange={(e) => setDraft({ ...draft, title: e.target.value })}
@@ -173,8 +177,12 @@ function EntryEditorMenu({
         <div className="flex gap-3">
           <div className="flex items-start justify-between gap-4 rounded-xl border border-fg/10 bg-surface-el/90 p-3 flex-1">
             <div>
-              <label className="block text-sm font-semibold text-fg">{t("characters.lorebook.enabled")}</label>
-              <p className="mt-0.5 text-xs text-fg/50">{t("characters.lorebook.includeInPrompts")}</p>
+              <label className="block text-sm font-semibold text-fg">
+                {t("characters.lorebook.enabled")}
+              </label>
+              <p className="mt-0.5 text-xs text-fg/50">
+                {t("characters.lorebook.includeInPrompts")}
+              </p>
             </div>
             <label
               className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-all duration-200 ${
@@ -197,8 +205,12 @@ function EntryEditorMenu({
 
           <div className="flex items-start justify-between gap-4 rounded-xl border border-fg/10 bg-surface-el/90 p-3 flex-1">
             <div>
-              <label className="block text-sm font-semibold text-fg">{t("characters.lorebook.alwaysOn")}</label>
-              <p className="mt-0.5 text-xs text-fg/50">{t("characters.lorebook.noKeywordsNeeded")}</p>
+              <label className="block text-sm font-semibold text-fg">
+                {t("characters.lorebook.alwaysOn")}
+              </label>
+              <p className="mt-0.5 text-xs text-fg/50">
+                {t("characters.lorebook.noKeywordsNeeded")}
+              </p>
             </div>
             <label
               className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-all duration-200 ${
@@ -232,7 +244,9 @@ function EntryEditorMenu({
 
         {/* Content */}
         <div className="space-y-2">
-          <label className="text-[11px] font-medium text-fg/70">{t("characters.lorebook.contentLabel")}</label>
+          <label className="text-[11px] font-medium text-fg/70">
+            {t("characters.lorebook.contentLabel")}
+          </label>
           <textarea
             value={draft.content}
             onChange={(e) => setDraft({ ...draft, content: e.target.value })}
@@ -339,7 +353,8 @@ function EntryListItem({
   };
 
   const { t } = useI18n();
-  const displayTitle = entry.title?.trim() || entry.keywords[0] || t("characters.lorebook.untitledEntry");
+  const displayTitle =
+    entry.title?.trim() || entry.keywords[0] || t("characters.lorebook.untitledEntry");
   const displaySubtitle = entry.alwaysActive
     ? t("characters.lorebook.alwaysActive")
     : entry.keywords.length > 0
@@ -427,11 +442,7 @@ function EntryListItem({
         >
           <BookOpen
             className={`h-5 w-5 ${
-              entry.enabled
-                ? entry.alwaysActive
-                  ? "text-info"
-                  : "text-accent/80"
-                : "text-fg/40"
+              entry.enabled ? (entry.alwaysActive ? "text-info" : "text-accent/80") : "text-fg/40"
             }`}
           />
         </div>
@@ -440,7 +451,9 @@ function EntryListItem({
           <div className="flex items-center gap-2">
             <h3 className="truncate text-sm font-semibold text-fg">{displayTitle}</h3>
             {!entry.enabled && (
-              <span className="text-[10px] uppercase tracking-wide text-fg/40">{t("characters.lorebook.disabled")}</span>
+              <span className="text-[10px] uppercase tracking-wide text-fg/40">
+                {t("characters.lorebook.disabled")}
+              </span>
             )}
           </div>
           <p className="line-clamp-1 text-xs text-fg/50">{displaySubtitle}</p>
@@ -611,7 +624,7 @@ export function StandaloneLorebookEditor() {
     try {
       setIsImporting(true);
       const raw = await readFileAsText(file);
-      const imported = await importLorebook(raw);
+      const imported = await importLorebook(raw, file.name);
       navigate(`/library/lorebooks/${imported.id}`);
     } catch (error) {
       console.error("Failed to import lorebook:", error);
@@ -756,7 +769,9 @@ export function StandaloneLorebookEditor() {
           {entries.length === 0 ? (
             <div className="flex h-64 flex-col items-center justify-center">
               <BookOpen className="mb-3 h-12 w-12 text-fg/20" />
-              <h3 className="mb-1 text-lg font-medium text-fg">{t("characters.lorebook.noEntriesYet")}</h3>
+              <h3 className="mb-1 text-lg font-medium text-fg">
+                {t("characters.lorebook.noEntriesYet")}
+              </h3>
               <p className="mb-4 text-center text-sm text-fg/50">
                 {t("characters.lorebook.addEntriesToInject")}
               </p>
@@ -797,7 +812,11 @@ export function StandaloneLorebookEditor() {
         <BottomMenu
           isOpen={Boolean(selectedEntry)}
           onClose={() => setSelectedEntry(null)}
-          title={selectedEntry?.title || selectedEntry?.keywords[0] || t("characters.lorebook.entryDefaultName")}
+          title={
+            selectedEntry?.title ||
+            selectedEntry?.keywords[0] ||
+            t("characters.lorebook.entryDefaultName")
+          }
         >
           {selectedEntry && (
             <div className="space-y-2">
@@ -814,7 +833,11 @@ export function StandaloneLorebookEditor() {
 
               <MenuButton
                 icon={Star}
-                title={selectedEntry.enabled ? t("characters.lorebook.disableEntry") : t("characters.lorebook.enableEntry")}
+                title={
+                  selectedEntry.enabled
+                    ? t("characters.lorebook.disableEntry")
+                    : t("characters.lorebook.enableEntry")
+                }
                 description={
                   selectedEntry.enabled
                     ? t("characters.lorebook.entryDisabledDesc")
@@ -844,7 +867,9 @@ export function StandaloneLorebookEditor() {
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-danger/30 bg-danger/20">
                   <Trash2 className="h-4 w-4 text-danger" />
                 </div>
-                <span className="text-sm font-medium text-danger">{t("characters.lorebook.deleteEntry")}</span>
+                <span className="text-sm font-medium text-danger">
+                  {t("characters.lorebook.deleteEntry")}
+                </span>
               </button>
             </div>
           )}
@@ -872,7 +897,9 @@ export function StandaloneLorebookEditor() {
         >
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-[11px] font-medium text-fg/70">{t("characters.lorebook.nameLabel")}</label>
+              <label className="text-[11px] font-medium text-fg/70">
+                {t("characters.lorebook.nameLabel")}
+              </label>
               <input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
