@@ -547,6 +547,8 @@ pub(crate) fn app_version(app: &AppHandle) -> String {
         version.push_str("-cuda");
     } else if cfg!(feature = "llama-gpu-rocm") {
         version.push_str("-rocm");
+    } else if cfg!(feature = "llama-gpu-vulkan") {
+        version.push_str("-vulkan");
     }
     version
 }

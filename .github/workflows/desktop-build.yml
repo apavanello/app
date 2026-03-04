@@ -23,8 +23,8 @@ on:
         required: false
         default: false
         type: boolean
-      build_llama_rocm_windows:
-        description: "Build Windows ROCm version with llama.cpp ROCm support"
+      build_llama_vulkan_windows:
+        description: "Build Windows Vulkan version with llama.cpp Vulkan support"
         required: false
         default: false
         type: boolean
@@ -899,10 +899,10 @@ jobs:
           files: dist-artifacts/windows-cuda.zip
           fail_on_unmatched_files: true
 
-  windows_rocm:
-    name: Windows Build (ROCm)
+  windows_vulkan:
+    name: Windows Build (Vulkan)
     needs: prepare_release
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_rocm_windows == true }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_vulkan_windows == true }}
     runs-on: blacksmith-4vcpu-windows-2025
     env:
       APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
@@ -937,71 +937,42 @@ jobs:
           echo "LIBCLANG_PATH=C:\\Program Files\\LLVM\\bin" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "C:\\Program Files\\LLVM\\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install ROCm HIP toolchain (Windows)
+      - name: Install Vulkan SDK
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          python --version
-          python -m pip install --upgrade pip
+          choco install vulkan-sdk -y --no-progress
 
-          $base = "https://repo.radeon.com/rocm/windows/"
-          $index = (Invoke-WebRequest -Uri $base -UseBasicParsing).Content
-          $releaseTags = [regex]::Matches($index, 'rocm-rel-([0-9]+(?:\.[0-9]+)*)/') | ForEach-Object { $_.Groups[1].Value } | Sort-Object {[version]$_} -Descending
-          if (-not $releaseTags -or $releaseTags.Count -eq 0) {
-            throw "Could not detect ROCm Windows release tags at $base"
+          if (-not (Test-Path "C:\\VulkanSDK")) {
+            throw "C:\\VulkanSDK not found after Vulkan SDK install."
           }
-          $releaseTag = $releaseTags[0]
-          $releaseUrl = "$base" + "rocm-rel-$releaseTag/"
 
-          $releaseIndex = (Invoke-WebRequest -Uri $releaseUrl -UseBasicParsing).Content
-          $tarMatch = [regex]::Match($releaseIndex, 'href="rocm-([^"]+)\.tar\.gz"')
-          if (-not $tarMatch.Success) {
-            throw "Could not detect ROCm Python package version in $releaseUrl"
+          $sdkDir = Get-ChildItem -Path "C:\\VulkanSDK" -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $sdkDir) {
+            throw "No Vulkan SDK version directory found under C:\\VulkanSDK."
           }
-          $rocmVersion = $tarMatch.Groups[1].Value
 
-          Write-Host "Installing rocm[devel,libraries]==$rocmVersion from $releaseUrl"
-          python -m pip install "rocm[devel,libraries]==$rocmVersion" --find-links "$releaseUrl"
-          python -m rocm_sdk init
-
-          $rocmBin = (python -m rocm_sdk path --bin).Trim()
-          $rocmRoot = (python -m rocm_sdk path --root).Trim()
-          if (-not (Test-Path (Join-Path $rocmBin "hipcc.bat")) -and -not (Test-Path (Join-Path $rocmBin "hipcc.exe"))) {
-            throw "hipcc not found in ROCm bin path: $rocmBin"
+          $vulkanRoot = $sdkDir.FullName
+          if (-not (Test-Path (Join-Path $vulkanRoot "Lib\\vulkan-1.lib"))) {
+            throw "vulkan-1.lib not found under $vulkanRoot\\Lib"
           }
-          $deviceLibFile = Get-ChildItem -Path $rocmRoot -Recurse -File -Filter "ocml.bc" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $deviceLibFile) {
-            throw "Could not find ROCm device library (ocml.bc) under $rocmRoot"
-          }
-          $deviceLibDir = $deviceLibFile.DirectoryName
 
-          "ROCM_PATH=$rocmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "HIP_PATH=$rocmRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "HIP_PLATFORM=amd" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "ROCM_DEVICE_LIB_PATH=$deviceLibDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "HIP_DEVICE_LIB_PATH=$deviceLibDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "CMAKE_PREFIX_PATH=$rocmRoot\lib\cmake" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          $rocmBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "VULKAN_SDK=$vulkanRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $vulkanRoot "Bin") | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Verify ROCm toolchain
+      - name: Verify Vulkan SDK
         shell: pwsh
         run: |
-          if (-not (Get-Command hipcc -ErrorAction SilentlyContinue)) {
-            Write-Error "hipcc not found (required for llama-gpu-rocm build). Install AMD HIP SDK/ROCm on the runner image."
+          if (-not $env:VULKAN_SDK) {
+            Write-Error "VULKAN_SDK is not set."
             exit 1
           }
-          hipcc --version
-          if (-not $env:ROCM_DEVICE_LIB_PATH -or -not (Test-Path (Join-Path $env:ROCM_DEVICE_LIB_PATH "ocml.bc"))) {
-            Write-Error "ROCm device library path invalid: '$env:ROCM_DEVICE_LIB_PATH'"
+          $vulkanLib = Join-Path $env:VULKAN_SDK "Lib\\vulkan-1.lib"
+          if (-not (Test-Path $vulkanLib)) {
+            Write-Error "Vulkan loader import library not found: $vulkanLib"
             exit 1
           }
-          Write-Host "ROCM_PATH=$env:ROCM_PATH"
-          Write-Host "ROCM_DEVICE_LIB_PATH=$env:ROCM_DEVICE_LIB_PATH"
+          Write-Host "VULKAN_SDK=$env:VULKAN_SDK"
 
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -1069,37 +1040,27 @@ jobs:
           "@
           $devConfig | Out-File -FilePath dev-config.json -Encoding UTF8
 
-      - name: Build Tauri (Windows, llama.cpp ROCm)
+      - name: Build Tauri (Windows, llama.cpp Vulkan)
         env:
           RUSTFLAGS: "--cfg DEV_BUILD -C target-feature=-crt-static"
           CMAKE_MSVC_RUNTIME_LIBRARY: "MultiThreadedDLL"
           CMAKE_GENERATOR: "Ninja"
-          CXXFLAGS: "/EHsc /clang:--rocm-path=${{ env.ROCM_PATH }} /clang:--rocm-device-lib-path=${{ env.ROCM_DEVICE_LIB_PATH }}"
-          CFLAGS: "/clang:--rocm-path=${{ env.ROCM_PATH }} /clang:--rocm-device-lib-path=${{ env.ROCM_DEVICE_LIB_PATH }}"
-          CMAKE_C_COMPILER: "clang-cl"
-          CMAKE_CXX_COMPILER: "clang-cl"
-          CMAKE_HIP_COMPILER: "hipcc"
-          CMAKE_HIP_FLAGS: "--rocm-path=${{ env.ROCM_PATH }} --rocm-device-lib-path=${{ env.ROCM_DEVICE_LIB_PATH }}"
-          CMAKE_HIP_PLATFORM: "amd"
-          HIP_PLATFORM: "amd"
-          HIP_PATH: ${{ env.HIP_PATH }}
-          ROCM_PATH: ${{ env.ROCM_PATH }}
-          HIP_DEVICE_LIB_PATH: ${{ env.HIP_DEVICE_LIB_PATH }}
-          ROCM_DEVICE_LIB_PATH: ${{ env.ROCM_DEVICE_LIB_PATH }}
-          CARGO_TARGET_DIR: target-rocm
-        run: bun run tauri build --config dev-config.json --features llama-gpu-rocm
+          CXXFLAGS: "/EHsc"
+          VULKAN_SDK: ${{ env.VULKAN_SDK }}
+          CARGO_TARGET_DIR: target-vulkan
+        run: bun run tauri build --config dev-config.json --features llama-gpu-vulkan
 
-      - name: Package Windows ROCm zip
+      - name: Package Windows Vulkan zip
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist-artifacts | Out-Null
-          Compress-Archive -Path src-tauri/target-rocm/release/bundle/* -DestinationPath dist-artifacts/windows-rocm.zip -Force
+          Compress-Archive -Path src-tauri/target-vulkan/release/bundle/* -DestinationPath dist-artifacts/windows-vulkan.zip -Force
 
-      - name: Upload Windows ROCm zip to GitHub Release
+      - name: Upload Windows Vulkan zip to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare_release.outputs.tag }}
-          files: dist-artifacts/windows-rocm.zip
+          files: dist-artifacts/windows-vulkan.zip
           fail_on_unmatched_files: true
 
   macos_cpu:
@@ -1375,7 +1336,7 @@ jobs:
       - linux_rocm
       - windows_cpu
       - windows_cuda
-      - windows_rocm
+      - windows_vulkan
       - macos_cpu
       - macos_metal
     if: ${{ always() && needs.prepare_release.result == 'success' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}

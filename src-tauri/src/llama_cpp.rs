@@ -156,6 +156,9 @@ mod desktop {
         if cfg!(feature = "llama-gpu-rocm") {
             out.push("rocm");
         }
+        if cfg!(feature = "llama-gpu-vulkan") {
+            out.push("vulkan");
+        }
         if cfg!(feature = "llama-gpu-metal") {
             out.push("metal");
         }

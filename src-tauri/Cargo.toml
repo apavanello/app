@@ -13,6 +13,8 @@ llama-gpu-cuda = ["llama-cpp-2/cuda"]
 llama-gpu-cuda-no-vmm = ["llama-gpu-cuda", "llama-cpp-2/cuda-no-vmm"]
 # Cross-vendor GPU acceleration path for desktop llama.cpp (ROCm backend).
 llama-gpu-rocm = ["llama-cpp-2/rocm"]
+# Cross-vendor GPU acceleration path for desktop llama.cpp (Vulkan backend).
+llama-gpu-vulkan = ["llama-cpp-2/vulkan"]
 # Apple GPU acceleration for desktop llama.cpp (Metal backend, macOS only).
 llama-gpu-metal = ["llama-cpp-2/metal"]
 
