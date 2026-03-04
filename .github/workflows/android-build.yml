@@ -292,3 +292,48 @@ jobs:
             dist-artifacts/android-universal-release.apk
             dist-artifacts/android-apk-bundle.zip
           fail_on_unmatched_files: true
+
+  cleanup_release_on_failure:
+    name: Cleanup release on failure/cancel
+    needs:
+      - prepare_release
+      - android
+    if: ${{ always() && needs.prepare_release.result == 'success' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete prerelease and tag
+        uses: actions/github-script@v7
+        env:
+          RELEASE_TAG: ${{ needs.prepare_release.outputs.tag }}
+        with:
+          script: |
+            const tag = process.env.RELEASE_TAG;
+            if (!tag) {
+              core.info("No release tag from prepare_release; skipping cleanup.");
+              return;
+            }
+
+            const { owner, repo } = context.repo;
+
+            try {
+              const release = await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+              await github.rest.repos.deleteRelease({ owner, repo, release_id: release.data.id });
+              core.info(`Deleted release ${tag} (id=${release.data.id}).`);
+            } catch (error) {
+              if (error.status === 404) {
+                core.info(`Release ${tag} not found; skipping.`);
+              } else {
+                throw error;
+              }
+            }
+
+            try {
+              await github.rest.git.deleteRef({ owner, repo, ref: `tags/${tag}` });
+              core.info(`Deleted tag ${tag}.`);
+            } catch (error) {
+              if (error.status === 404) {
+                core.info(`Tag ${tag} not found; skipping.`);
+              } else {
+                throw error;
+              }
+            }
