@@ -108,21 +108,31 @@ async fn resolve_or_download_onnxruntime(app: &AppHandle) -> Result<PathBuf, Str
                 } else if cfg!(target_os = "macos") {
                     if let Some(ort_dir) = path.parent() {
                         let shared = ort_dir.join("libonnxruntime_providers_shared.dylib");
-                        if shared.exists() {
-                            let coreml = ort_dir.join("libonnxruntime_providers_coreml.dylib");
-                            if !coreml.exists() {
-                                crate::utils::log_warn(
-                                    app,
-                                    "embedding_debug",
-                                    format!(
-                                        "ORT_DYLIB_PATH is set to {} but CoreML provider dylib is missing; embeddings will use CPU fallback.",
-                                        path.display()
-                                    ),
-                                );
-                            }
+                        if !shared.exists() {
+                            crate::utils::log_warn(
+                                app,
+                                "embedding_debug",
+                                format!(
+                                    "ORT_DYLIB_PATH is set to {} but provider shared dylib is missing; using main ONNX Runtime dylib and skipping download.",
+                                    path.display()
+                                ),
+                            );
                             return Ok(path.to_path_buf());
                         }
+                        let coreml = ort_dir.join("libonnxruntime_providers_coreml.dylib");
+                        if !coreml.exists() {
+                            crate::utils::log_warn(
+                                app,
+                                "embedding_debug",
+                                format!(
+                                    "ORT_DYLIB_PATH is set to {} but CoreML provider dylib is missing; embeddings will use CPU fallback.",
+                                    path.display()
+                                ),
+                            );
+                        }
+                        return Ok(path.to_path_buf());
                     }
+                    return Ok(path.to_path_buf());
                 } else {
                     return Ok(path.to_path_buf());
                 }
@@ -145,9 +155,18 @@ async fn resolve_or_download_onnxruntime(app: &AppHandle) -> Result<PathBuf, Str
             }
         } else if cfg!(target_os = "macos") {
             let shared = ort_dir.join("libonnxruntime_providers_shared.dylib");
-            if shared.exists() {
+            if !shared.exists() {
+                crate::utils::log_warn(
+                    app,
+                    "embedding_debug",
+                    format!(
+                        "Bundled ONNX Runtime found at {} but provider shared dylib is missing; using bundled main dylib and skipping download.",
+                        dest_path.display()
+                    ),
+                );
                 return Ok(dest_path);
             }
+            return Ok(dest_path);
         } else {
             return Ok(dest_path);
         }
