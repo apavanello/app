@@ -817,6 +817,8 @@ fn record_group_dynamic_memory_error(
         "createdAt": now_millis().unwrap_or_default(),
     });
     push_group_memory_event(session, event);
+    session.memory_status = "failed".to_string();
+    session.memory_error = Some(format!("{}: {}", stage, error));
 
     if let Err(save_err) = save_group_session_memories(app, session, pool) {
         log_error(
@@ -830,7 +832,7 @@ fn record_group_dynamic_memory_error(
         "group-dynamic-memory:error",
         json!({
             "sessionId": session.id,
-            "error": format!("{}: {}", stage, error),
+            "error": session.memory_error.clone().unwrap_or_else(|| format!("{}: {}", stage, error)),
             "stage": stage
         }),
     );
@@ -1659,6 +1661,15 @@ async fn process_group_dynamic_memory_cycle(
         }
     };
 
+    session.memory_status = "processing".to_string();
+    session.memory_error = None;
+    if let Err(err) = save_group_session_memories(app, session, pool) {
+        let _ = app.emit(
+            "group-dynamic-memory:error",
+            json!({ "sessionId": session.id, "error": err, "stage": "save_processing_state" }),
+        );
+        return Err(err);
+    }
     let _ = app.emit(
         "group-dynamic-memory:processing",
         json!({ "sessionId": session.id }),
@@ -1831,6 +1842,8 @@ async fn process_group_dynamic_memory_cycle(
         "createdAt": crate::utils::now_millis().unwrap_or(0),
     });
     push_group_memory_event(session, memory_event);
+    session.memory_status = "idle".to_string();
+    session.memory_error = None;
 
     // Save session memories
     if let Err(err) = save_group_session_memories(app, session, pool) {
@@ -3000,6 +3013,8 @@ fn save_group_session_memories(
         Some(&session.memory_summary),
         session.memory_summary_token_count,
         &session.memory_tool_events,
+        Some(&session.memory_status),
+        session.memory_error.as_deref(),
     )?;
     log_info(
         app,

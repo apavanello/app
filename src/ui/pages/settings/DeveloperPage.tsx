@@ -352,6 +352,131 @@ export function DeveloperPage() {
     }
   };
 
+  const generateSeededBenchmarkGroupSession = async () => {
+    try {
+      setStatus("Creating seeded benchmark group chat...");
+
+      const now = Date.now();
+      const sceneId = crypto.randomUUID();
+
+      const [mirelle, tamsin, orin] = await Promise.all([
+        saveCharacter({
+          name: "Mirelle Vale",
+          description: "A precise archivist and intelligence broker who notices every inconsistency.",
+          definition:
+            "Mirelle Vale is sharp, controlled, suspicious, and exacting. She values precision, keeps emotional distance until trust is earned, and focuses on facts, leverage, and hidden motives.",
+          memoryType: "dynamic",
+          tags: ["developer", "benchmark", "group-memory-test", "airship-noir"],
+          scenes: [
+            {
+              id: sceneId,
+              content:
+                "Rain rattles the ironwork over the Lantern Archive. Lamps hiss over flooded stone, ledgers lie open on brass tables, and too many names have begun to connect.",
+              createdAt: now,
+              variants: [],
+            },
+          ],
+          defaultSceneId: sceneId,
+        }),
+        saveCharacter({
+          name: "Tamsin Reed",
+          description: "A quiet dockrunner and scout who speaks rarely but remembers routes perfectly.",
+          definition:
+            "Tamsin Reed is patient, observant, and economical with words. She dislikes noise, prefers unambiguous plans, and only interrupts when she has something useful to add.",
+          memoryType: "dynamic",
+          tags: ["developer", "benchmark", "group-memory-test"],
+        }),
+        saveCharacter({
+          name: "Captain Orin Vale",
+          description: "A reckless smuggler captain whose instincts are excellent and whose recollection is not.",
+          definition:
+            "Captain Orin is charismatic, fast-moving, and brave to the point of carelessness. He remembers routes and favors, but confuses names, dates, and secondary details when tired.",
+          memoryType: "dynamic",
+          tags: ["developer", "benchmark", "group-memory-test"],
+        }),
+      ]);
+
+      const session = await storageBridge.groupSessionCreate(
+        "Benchmark Group: Lantern Archive",
+        [mirelle.id, tamsin.id, orin.id],
+        null,
+        "roleplay",
+        {
+          id: sceneId,
+          content:
+            "The Lantern Archive has become a temporary war room. Rain, ledgers, maps, and conflicting testimony crowd the table while the city sleeps badly outside.",
+          createdAt: now,
+          variants: [],
+        },
+        null,
+        "llm",
+      );
+
+      await storageBridge.groupSessionUpdateMemoryType(session.id, "dynamic");
+
+      const seededMessages = [
+        { role: "user", content: 'I place the Cendre ledger on the table. "We finally have enough pieces to stop guessing."' },
+        { role: "assistant", speakerCharacterId: mirelle.id, content: 'Mirelle folds her gloves beside the ledger. "Then we stop guessing and start separating facts from Captain Orin\'s instincts."' },
+        { role: "assistant", speakerCharacterId: orin.id, content: '"My instincts found the ledger," Orin says. "And the satchel. And the compass that still points east."' },
+        { role: "assistant", speakerCharacterId: tamsin.id, content: '"It points east even when turned," Tamsin says. "I checked three times on the walk here."' },
+        { role: "user", content: '"Good. First fact: the phrase in the ledger says, \'When the sixth bell fails, ask for Mara\'s red key.\'"' },
+        { role: "assistant", speakerCharacterId: mirelle.id, content: '"Mara Vale was my sister," Mirelle says. "Red key, family phrase, genuine reference. That part is real."' },
+        { role: "assistant", speakerCharacterId: orin.id, content: '"And House Cendre paid the Bellwright before the Blackwake fire. That part was real too."' },
+        { role: "user", content: '"Both mine and Mirelle\'s fathers died in that fire. I want that remembered correctly."' },
+        { role: "assistant", speakerCharacterId: tamsin.id, content: '"Also correctly: the civic watch helped bury the sabotage after the fire," Tamsin says.' },
+        { role: "assistant", speakerCharacterId: mirelle.id, content: '"Likely someone inside records handling, yes. The altered archive seals point that way."' },
+        { role: "user", content: '"The blue silk on the satchel wasn\'t harbor union. It was smuggler shorthand from the east docks: three short stitches, one long."' },
+        { role: "assistant", speakerCharacterId: orin.id, content: '"I said union because I saw blue and was exhausted," Orin mutters. "My route memory holds up better than my symbol memory."' },
+        { role: "assistant", speakerCharacterId: mirelle.id, content: '"That is one of the more useful admissions you\'ve made."' },
+        { role: "user", content: '"Boundary check: no deals with Inspector Sen unless I say yes first. He sold my crew to privateers last spring."' },
+        { role: "assistant", speakerCharacterId: mirelle.id, content: '"Agreed. No Sen without your consent."' },
+        { role: "assistant", speakerCharacterId: orin.id, content: '"I already disliked him. Now I can pretend it was moral clarity."' },
+        { role: "assistant", speakerCharacterId: tamsin.id, content: '"Sen also keeps watchers near the west stairs. If we leave, we leave by the cistern corridor."' },
+        { role: "user", content: '"Second boundary: if I go missing, do not send Joren after me. He talks too much and smells like sugared lamp oil."' },
+        { role: "assistant", speakerCharacterId: mirelle.id, content: '"Noted. Joren stays out. If a third hand is needed, I call Tamsin."' },
+        { role: "assistant", speakerCharacterId: tamsin.id, content: '"I prefer that arrangement."' },
+        { role: "assistant", speakerCharacterId: orin.id, content: '"Joren will sulk, but quietly is beyond him."' },
+        { role: "user", content: '"The route is Tunnel Nine. Tunnel Seven collapsed last month. No one mix those up again."' },
+        { role: "assistant", speakerCharacterId: tamsin.id, content: '"Tunnel Nine reaches the cistern vault. Seven is dead stone and floodwater."' },
+        { role: "assistant", speakerCharacterId: mirelle.id, content: '"And the compass must not touch salt water. The warding keywork reacts to contamination."' },
+        { role: "user", content: '"If we get proof, copies go to Captain Orin and Magistrate Elara Voss only. Alarm manifests and payment pages, not the whole ledger."' },
+        { role: "assistant", speakerCharacterId: orin.id, content: '"That was my idea originally," Orin says, lying with moderate confidence.' },
+        { role: "assistant", speakerCharacterId: mirelle.id, content: '"No, it was theirs. But yes: limited copies to Orin and Elara Voss."' },
+        { role: "assistant", speakerCharacterId: tamsin.id, content: '"And if we split, regroup at the flooded catalog rotunda, not the harbor stairs."' },
+        { role: "user", content: '"Last correction before we move: the Bellwright isn\'t one person. It\'s a title used by multiple operators."' },
+        { role: "assistant", speakerCharacterId: mirelle.id, content: '"At least four in the last decade," Mirelle says. "Now stop talking and help me open the vault map before dawn notices us."' },
+      ];
+
+      for (let index = 0; index < seededMessages.length; index += 1) {
+        const message = seededMessages[index];
+        await storageBridge.groupMessageUpsert(session.id, {
+          id: crypto.randomUUID(),
+          sessionId: session.id,
+          role: message.role,
+          content: message.content,
+          speakerCharacterId: "speakerCharacterId" in message ? message.speakerCharacterId : null,
+          turnNumber: index + 1,
+          createdAt: now + index + 1,
+          usage: undefined,
+          variants: undefined,
+          selectedVariantId: undefined,
+          isPinned: false,
+          attachments: [],
+          reasoning: null,
+          selectionReasoning: null,
+          modelId: null,
+        });
+      }
+
+      showStatus(`✓ Seeded group benchmark ready: ${session.id}`);
+      navigate(`/group-chats/${session.id}`);
+    } catch (err) {
+      showError(
+        `Failed to create seeded benchmark group session: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  };
+
   const optimizeDb = async () => {
     try {
       await invoke("db_optimize");
@@ -469,6 +594,14 @@ export function DeveloperPage() {
             title="Create seeded benchmark chat"
             description="Creates a dynamic-memory character, starting scene, and a 20-message continuity test session, then opens it."
             onClick={generateSeededBenchmarkSession}
+            variant="primary"
+          />
+
+          <ActionButton
+            icon={<FlaskConical />}
+            title="Create seeded benchmark group chat"
+            description="Creates a dynamic-memory group chat with three benchmark characters and 30 seeded messages, then opens it."
+            onClick={generateSeededBenchmarkGroupSession}
             variant="primary"
           />
         </section>

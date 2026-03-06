@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Copy, Trash2, RotateCcw, Edit3, Users } from "lucide-react";
+import { Copy, Trash2, RotateCcw, Edit3, Users, Pin, PinOff } from "lucide-react";
 
 import type { Character, Settings, Model } from "../../../../core/storage/schemas";
 import { useAvatar } from "../../../hooks/useAvatar";
@@ -64,6 +64,7 @@ export function GroupChatMessageActionsBottomSheet({
   handleSaveEdit,
   handleDeleteMessage,
   handleRewindToMessage,
+  handleTogglePin,
   handleCopyMessage,
   setMessageAction,
   onRegenerate,
@@ -81,6 +82,7 @@ export function GroupChatMessageActionsBottomSheet({
   handleSaveEdit: () => Promise<void>;
   handleDeleteMessage: () => Promise<void>;
   handleRewindToMessage: () => Promise<void>;
+  handleTogglePin: () => Promise<void>;
   handleCopyMessage: () => Promise<void>;
   setMessageAction: (value: MessageActionState | null) => void;
   onRegenerate: (characterId?: string) => void;
@@ -198,6 +200,16 @@ export function GroupChatMessageActionsBottomSheet({
                     onClick={() => setShowCharacterPicker(true)}
                   />
                 )}
+
+                <div className="h-px bg-fg/5 my-2" />
+
+                <ActionRow
+                  icon={messageAction.message.isPinned ? PinOff : Pin}
+                  label={messageAction.message.isPinned ? "Unpin" : "Pin"}
+                  iconBg="bg-warning/20"
+                  onClick={() => void handleTogglePin()}
+                  disabled={actionBusy}
+                />
 
                 <div className="h-px bg-fg/5 my-2" />
 

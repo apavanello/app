@@ -1502,6 +1502,8 @@ export const GroupSessionSchema = z.object({
       }),
     )
     .default([]),
+  memoryStatus: z.string().nullish().optional().default("idle"),
+  memoryError: z.string().nullish().optional(),
 });
 export type GroupSession = z.infer<typeof GroupSessionSchema>;
 

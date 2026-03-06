@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 
-import type { GroupSession } from "../../../../core/storage/schemas";
+import type { GroupMessage, GroupSession } from "../../../../core/storage/schemas";
 import {
+  SESSION_UPDATED_EVENT,
   groupSessionAddMemory,
   groupSessionRemoveMemory,
   groupSessionUpdateMemory,
   groupSessionToggleMemoryPin,
   groupSessionSetMemoryColdState,
   getGroupSession,
+  listPinnedGroupMessages,
+  toggleGroupMessagePin,
 } from "../../../../core/storage/repo";
 import { storageBridge } from "../../../../core/storage/files";
 import { initUi, uiReducer } from "../reducers/groupChatMemoriesReducer";
@@ -38,6 +41,7 @@ type MemoryStats = {
 
 function useGroupSessionData(sessionId?: string) {
   const [session, setSession] = useState<GroupSession | null>(null);
+  const [pinnedMessages, setPinnedMessages] = useState<GroupMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,14 +54,20 @@ function useGroupSessionData(sessionId?: string) {
     setLoading(true);
     setError(null);
     try {
-      const targetSession = await getGroupSession(sessionId);
+      const [targetSession, pinned] = await Promise.all([
+        getGroupSession(sessionId),
+        listPinnedGroupMessages(sessionId).catch(() => [] as GroupMessage[]),
+      ]);
       if (targetSession) {
         setSession(targetSession);
+        setPinnedMessages(pinned);
       } else {
         setError("Session not found");
+        setPinnedMessages([]);
       }
     } catch (err: any) {
       setError(err?.message || "Failed to load session");
+      setPinnedMessages([]);
     } finally {
       setLoading(false);
     }
@@ -67,7 +77,18 @@ function useGroupSessionData(sessionId?: string) {
     void load();
   }, [load]);
 
-  return { session, setSession, loading, error, reload: load };
+  useEffect(() => {
+    const handleSessionUpdated = () => {
+      void load();
+    };
+
+    window.addEventListener(SESSION_UPDATED_EVENT, handleSessionUpdated);
+    return () => {
+      window.removeEventListener(SESSION_UPDATED_EVENT, handleSessionUpdated);
+    };
+  }, [load]);
+
+  return { session, setSession, pinnedMessages, setPinnedMessages, loading, error, reload: load };
 }
 
 function useGroupMemoryActions(
@@ -130,7 +151,8 @@ function useGroupMemoryActions(
 }
 
 export function useGroupChatMemoriesController(groupSessionId?: string) {
-  const { session, setSession, loading, error, reload } = useGroupSessionData(groupSessionId);
+  const { session, setSession, pinnedMessages, setPinnedMessages, loading, error, reload } =
+    useGroupSessionData(groupSessionId);
   const { handleAdd, handleRemove, handleUpdate, handleTogglePin } = useGroupMemoryActions(
     session,
     (s) => setSession(s),
@@ -204,8 +226,8 @@ export function useGroupChatMemoriesController(groupSessionId?: string) {
         });
         const u2 = await listen("group-dynamic-memory:success", (e: any) => {
           if (e.payload?.sessionId === session.id) {
-            dispatch({ type: "SET_PENDING_REFRESH", value: true });
             dispatch({ type: "SET_MEMORY_STATUS", value: "idle" });
+            dispatch({ type: "SET_ACTION_ERROR", value: null });
             void reload();
           }
         });
@@ -213,7 +235,7 @@ export function useGroupChatMemoriesController(groupSessionId?: string) {
           if (e.payload?.sessionId === session.id) {
             const message = e.payload?.error || "Group memory cycle failed";
             dispatch({ type: "SET_ACTION_ERROR", value: message });
-            dispatch({ type: "SET_MEMORY_STATUS", value: "idle" });
+            dispatch({ type: "SET_MEMORY_STATUS", value: "failed" });
             void reload();
           }
         });
@@ -366,16 +388,13 @@ export function useGroupChatMemoriesController(groupSessionId?: string) {
     try {
       await storageBridge.groupChatRetryDynamicMemory(session.id);
       dispatch({ type: "SET_RETRY_STATUS", value: "success" });
-      dispatch({ type: "SET_PENDING_REFRESH", value: true });
       window.setTimeout(() => {
         dispatch({ type: "SET_RETRY_STATUS", value: "idle" });
-        dispatch({ type: "SET_MEMORY_STATUS", value: "idle" });
-        void reload();
       }, 3000);
     } catch (err: any) {
       console.error("Failed to retry memory processing:", err);
       dispatch({ type: "SET_RETRY_STATUS", value: "idle" });
-      dispatch({ type: "SET_MEMORY_STATUS", value: "idle" });
+      dispatch({ type: "SET_MEMORY_STATUS", value: "failed" });
       dispatch({ type: "SET_ACTION_ERROR", value: err?.message || "Failed to run memory cycle" });
       void reload();
     }
@@ -385,15 +404,51 @@ export function useGroupChatMemoriesController(groupSessionId?: string) {
     if (!session?.id) return;
     try {
       await reload();
-      dispatch({ type: "SET_PENDING_REFRESH", value: false });
       dispatch({ type: "SET_ACTION_ERROR", value: null });
     } catch (err: any) {
       dispatch({ type: "SET_ACTION_ERROR", value: err?.message || "Failed to refresh" });
     }
   }, [reload, session?.id]);
 
+  const handleDismissError = useCallback(async () => {
+    if (!session?.id || !session) return;
+    try {
+      await storageBridge.groupSessionUpdateMemories(
+        session.id,
+        session.memoryEmbeddings ?? [],
+        session.memorySummary ?? "",
+        session.memorySummaryTokenCount ?? 0,
+        "idle",
+        null,
+      );
+      setSession({ ...session, memoryStatus: "idle", memoryError: null });
+      dispatch({ type: "SET_ACTION_ERROR", value: null });
+      dispatch({ type: "SET_MEMORY_STATUS", value: "idle" });
+      await reload();
+    } catch (err: any) {
+      dispatch({ type: "SET_ACTION_ERROR", value: err?.message || "Failed to dismiss error" });
+    }
+  }, [reload, session, setSession]);
+
+  const handleTogglePinnedMessage = useCallback(
+    async (messageId: string) => {
+      if (!session?.id) return;
+      const nextPinned = await toggleGroupMessagePin(session.id, messageId);
+      if (nextPinned === null) {
+        throw new Error("Failed to toggle pinned message");
+      }
+      const nextPinnedMessages = nextPinned
+        ? pinnedMessages
+        : pinnedMessages.filter((message) => message.id !== messageId);
+      setPinnedMessages(nextPinnedMessages);
+      await reload();
+    },
+    [pinnedMessages, reload, session?.id, setPinnedMessages],
+  );
+
   return {
     session,
+    pinnedMessages,
     loading,
     error,
     ui,
@@ -411,6 +466,8 @@ export function useGroupChatMemoriesController(groupSessionId?: string) {
     saveEdit,
     handleRunMemoryCycle,
     handleRefresh,
+    handleDismissError,
+    handleTogglePinnedMessage,
     handleSaveSummaryClick,
   } as const;
 }

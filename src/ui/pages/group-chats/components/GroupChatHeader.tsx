@@ -80,6 +80,8 @@ export function GroupChatHeader({
   }, [session.id]);
 
   const memoryCount = session.memories?.length ?? 0;
+  const effectiveMemoryBusy = memoryBusy || session.memoryStatus === "processing";
+  const effectiveMemoryError = memoryError || session.memoryError || null;
 
   return (
     <header
@@ -116,18 +118,18 @@ export function GroupChatHeader({
             className="relative flex px-[0.6em] py-[0.3em] h-10 w-10 items-center justify-center text-white/80 transition hover:text-white"
             aria-label={t("groupChats.header.memories")}
           >
-            {memoryBusy ? (
+            {effectiveMemoryBusy ? (
               <Loader2
                 size={18}
                 strokeWidth={2.5}
                 className="animate-spin text-emerald-400"
               />
-            ) : memoryError ? (
+            ) : effectiveMemoryError ? (
               <AlertTriangle size={18} strokeWidth={2.5} className="text-red-400" />
             ) : (
               <Brain size={18} strokeWidth={2.5} />
             )}
-            {!memoryBusy && !memoryError && memoryCount > 0 && (
+            {!effectiveMemoryBusy && !effectiveMemoryError && memoryCount > 0 && (
               <span className="absolute right-0.5 top-0.5 inline-flex min-w-[1rem] h-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[10px] font-bold leading-none text-white shadow-md ring-1 ring-emerald-200/40">
                 {memoryCount > 99 ? "99+" : memoryCount}
               </span>

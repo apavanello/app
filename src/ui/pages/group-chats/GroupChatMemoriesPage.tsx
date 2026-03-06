@@ -78,6 +78,7 @@ export function GroupChatMemoriesPage() {
 
   const {
     session,
+    pinnedMessages,
     loading,
     error,
     ui,
@@ -93,6 +94,8 @@ export function GroupChatMemoriesPage() {
     saveEdit,
     handleRunMemoryCycle,
     handleRefresh,
+    handleDismissError,
+    handleTogglePinnedMessage,
     handleSaveSummaryClick,
   } = useGroupChatMemoriesController(groupSessionId);
 
@@ -101,6 +104,7 @@ export function GroupChatMemoriesPage() {
 
   const tabs = [
     { id: "memories" as const, icon: Bot, label: t("common.nav.dynamicMemory") },
+    { id: "pinned" as const, icon: Pin, label: t("groupChats.memories.tabPinned") },
     { id: "tools" as const, icon: Clock, label: "Activity" },
   ];
 
@@ -176,7 +180,7 @@ export function GroupChatMemoriesPage() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 ml-auto">
-            {(ui.retryStatus === "retrying" || ui.memoryStatus === "processing") && (
+            {(ui.retryStatus === "retrying" || session.memoryStatus === "processing") && (
               <div
                 className={cn(
                   radius.full,
@@ -222,9 +226,12 @@ export function GroupChatMemoriesPage() {
 
       <main className="flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+16px)]">
         {/* Error / Status Banners */}
-        {(ui.actionError || ui.retryStatus !== "idle" || ui.memoryStatus === "processing") && (
+        {(ui.actionError ||
+          session.memoryError ||
+          ui.retryStatus !== "idle" ||
+          session.memoryStatus === "processing") && (
           <div className="px-3 pt-3">
-            {ui.retryStatus === "retrying" || ui.memoryStatus === "processing" ? (
+            {ui.retryStatus === "retrying" || session.memoryStatus === "processing" ? (
               <div
                 className={cn(
                   radius.md,
@@ -233,7 +240,11 @@ export function GroupChatMemoriesPage() {
               >
                 <RefreshCw className="h-5 w-5 text-info shrink-0 animate-spin" />
                 <div className={cn("flex-1", typography.body.size, "text-info")}>
-                  <p className="font-semibold">AI is organizing group memories...</p>
+                  <p className="font-semibold">
+                    {session.memoryStatus === "processing"
+                      ? "AI is organizing group memories..."
+                      : "Retrying Memory Cycle..."}
+                  </p>
                 </div>
               </div>
             ) : ui.retryStatus === "success" ? (
@@ -254,7 +265,7 @@ export function GroupChatMemoriesPage() {
                   <X size={16} />
                 </button>
               </div>
-            ) : ui.actionError ? (
+            ) : ui.actionError || session.memoryError ? (
               <div
                 className={cn(
                   radius.md,
@@ -263,46 +274,17 @@ export function GroupChatMemoriesPage() {
               >
                 <AlertTriangle className="h-5 w-5 text-danger shrink-0" />
                 <div className={cn("flex-1", typography.body.size, "text-danger")}>
-                  <p className="font-semibold mb-1">Memory action failed</p>
-                  <p className="opacity-90">{ui.actionError}</p>
+                  <p className="font-semibold mb-1">Memory System Error</p>
+                  <p className="opacity-90">{ui.actionError || session.memoryError}</p>
                 </div>
                 <button
-                  onClick={() => dispatch({ type: "SET_ACTION_ERROR", value: null })}
+                  onClick={() => void handleDismissError()}
                   className="text-danger hover:text-danger"
                 >
                   <X size={16} />
                 </button>
               </div>
             ) : null}
-          </div>
-        )}
-
-        {ui.pendingRefresh && ui.memoryStatus !== "processing" && (
-          <div className="px-3 pt-3">
-            <div
-              className={cn(
-                radius.md,
-                "bg-fg/5 border border-fg/10 p-3 flex items-center justify-between gap-3",
-              )}
-            >
-              <div className={cn(typography.bodySmall.size, colors.text.secondary)}>
-                New memory updates available
-              </div>
-              <button
-                type="button"
-                onClick={handleRefresh}
-                className={cn(
-                  typography.caption.size,
-                  "font-semibold px-3 py-1",
-                  radius.full,
-                  "border border-fg/15 bg-fg/10 text-fg/80",
-                  interactive.transition.fast,
-                  interactive.active.scale,
-                )}
-              >
-                Refresh
-              </button>
-            </div>
           </div>
         )}
 
@@ -573,6 +555,95 @@ export function GroupChatMemoriesPage() {
                 )}
               </div>
             </motion.div>
+          ) : ui.activeTab === "pinned" ? (
+            <motion.div
+              key="pinned"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
+              className={cn("px-3 py-4", "space-y-5")}
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-[12px] font-semibold uppercase tracking-wider text-fg/50">
+                  Pinned Messages
+                </span>
+                <span className="text-[10px] text-fg/20 ml-auto">
+                  {pinnedMessages.length.toLocaleString()}
+                </span>
+                <button
+                  onClick={handleRefresh}
+                  className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg",
+                    "border border-fg/10 bg-fg/5",
+                    "text-[11px] font-semibold text-fg/50",
+                    "hover:bg-fg/8 hover:text-fg/70",
+                    "transition-all active:scale-95",
+                  )}
+                >
+                  <RefreshCw size={12} />
+                  Refresh
+                </button>
+              </div>
+
+              {pinnedMessages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-fg/10 bg-fg/5 mb-4">
+                    <Pin className="h-7 w-7 text-fg/20" />
+                  </div>
+                  <h3 className="mb-1 text-base font-semibold text-fg">No pinned messages</h3>
+                  <p className="text-center text-sm text-fg/40 max-w-60">
+                    Pin important group chat messages to always keep them in context.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {pinnedMessages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={cn(
+                        "rounded-xl border border-fg/6 bg-fg/2 px-4 py-3",
+                        "hover:border-fg/10 hover:bg-fg/3",
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1 flex items-center gap-2 text-[11px] uppercase tracking-wider text-fg/35">
+                            <span>{message.role === "assistant" ? "Assistant" : "User"}</span>
+                            <span>•</span>
+                            <span>{new Date(message.createdAt).toLocaleDateString()}</span>
+                          </div>
+                          <p className={cn(typography.bodySmall.size, "leading-relaxed text-fg/75")}>
+                            {message.content}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await handleTogglePinnedMessage(message.id);
+                              dispatch({ type: "SET_ACTION_ERROR", value: null });
+                            } catch (err: any) {
+                              dispatch({
+                                type: "SET_ACTION_ERROR",
+                                value: err?.message || "Failed to unpin message",
+                              });
+                            }
+                          }}
+                          className={cn(
+                            "shrink-0 rounded-lg border border-fg/10 bg-fg/5 px-3 py-1.5",
+                            "text-[11px] font-semibold text-fg/60 hover:bg-fg/8 hover:text-fg/80",
+                            "transition-all active:scale-95",
+                          )}
+                        >
+                          Unpin
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
           ) : (
             <motion.div
               key="tools"
@@ -591,7 +662,7 @@ export function GroupChatMemoriesPage() {
                 </span>
                 <button
                   onClick={handleRunMemoryCycle}
-                  disabled={ui.retryStatus === "retrying" || ui.memoryStatus === "processing"}
+                  disabled={ui.retryStatus === "retrying" || session.memoryStatus === "processing"}
                   className={cn(
                     "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg",
                     "border border-fg/10 bg-fg/5",
@@ -604,7 +675,7 @@ export function GroupChatMemoriesPage() {
                   <Cpu
                     size={12}
                     className={cn(
-                      (ui.retryStatus === "retrying" || ui.memoryStatus === "processing") &&
+                      (ui.retryStatus === "retrying" || session.memoryStatus === "processing") &&
                         "animate-pulse",
                     )}
                   />

@@ -1,6 +1,6 @@
-export type MemoriesTab = "memories" | "tools";
+export type MemoriesTab = "memories" | "tools" | "pinned";
 export type RetryStatus = "idle" | "retrying" | "success";
-export type MemoryStatus = "idle" | "processing";
+export type MemoryStatus = "idle" | "processing" | "failed";
 
 export type UiState = {
   activeTab: MemoriesTab;

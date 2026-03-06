@@ -90,6 +90,12 @@ pub struct GroupSession {
     /// Memory tool events tracking (for dynamic memory cycle gating)
     #[serde(default)]
     pub memory_tool_events: Vec<serde_json::Value>,
+    /// Dynamic memory processing state
+    #[serde(default = "default_memory_status")]
+    pub memory_status: String,
+    /// Last dynamic memory error if any
+    #[serde(default)]
+    pub memory_error: Option<String>,
     /// Speaker selection method: "llm", "heuristic", or "round_robin"
     #[serde(default = "default_speaker_selection_method")]
     pub speaker_selection_method: String,
@@ -108,6 +114,10 @@ fn default_speaker_selection_method() -> String {
 
 fn default_memory_type() -> String {
     "manual".to_string()
+}
+
+fn default_memory_status() -> String {
+    "idle".to_string()
 }
 
 /// Memory embedding for semantic search in group sessions
@@ -215,7 +225,7 @@ fn read_group_session(conn: &Connection, id: &str) -> Result<Option<GroupSession
         .prepare(
             "SELECT id, group_character_id, name, character_ids, muted_character_ids, persona_id, created_at, updated_at,
                     memories, memory_embeddings, memory_summary, memory_summary_token_count, archived, memory_tool_events,
-                    chat_type, starting_scene, background_image_path, speaker_selection_method, memory_type
+                    chat_type, starting_scene, background_image_path, speaker_selection_method, memory_type, memory_status, memory_error
              FROM group_sessions WHERE id = ?1",
         )
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -300,6 +310,13 @@ fn read_group_session(conn: &Connection, id: &str) -> Result<Option<GroupSession
             .get::<_, Option<String>>(18)
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
             .unwrap_or_else(|| "manual".to_string());
+        let memory_status: String = row
+            .get::<_, Option<String>>(19)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
+            .unwrap_or_else(|| "idle".to_string());
+        let memory_error: Option<String> = row
+            .get(20)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
         Ok(Some(GroupSession {
             id: row
@@ -331,6 +348,8 @@ fn read_group_session(conn: &Connection, id: &str) -> Result<Option<GroupSession
             memory_summary,
             memory_summary_token_count,
             memory_tool_events,
+            memory_status,
+            memory_error,
             speaker_selection_method,
             memory_type,
         }))
@@ -1382,6 +1401,8 @@ pub fn group_session_create(
         memory_summary: String::new(),
         memory_summary_token_count: 0,
         memory_tool_events: Vec::new(),
+        memory_status: "idle".to_string(),
+        memory_error: None,
         speaker_selection_method: selection_method,
         memory_type: "manual".to_string(),
     };
@@ -1801,6 +1822,20 @@ pub fn group_messages_list(
 }
 
 #[tauri::command]
+pub fn group_messages_list_pinned(
+    session_id: String,
+    pool: State<'_, SwappablePool>,
+) -> Result<String, String> {
+    let conn = pool.get_connection()?;
+    let messages = read_group_messages(&conn, &session_id, i32::MAX, None, None)?
+        .into_iter()
+        .filter(|message| message.is_pinned)
+        .collect::<Vec<_>>();
+    serde_json::to_string(&messages)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+#[tauri::command]
 pub fn group_message_upsert(
     session_id: String,
     message_json: String,
@@ -1888,6 +1923,41 @@ pub fn group_message_upsert(
 
     serde_json::to_string(&message)
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+#[tauri::command]
+pub fn group_message_toggle_pin_state(
+    session_id: String,
+    message_id: String,
+    pool: State<'_, SwappablePool>,
+) -> Result<Option<bool>, String> {
+    let conn = pool.get_connection()?;
+    let now = now_ms() as i64;
+    let current: Option<i64> = conn
+        .query_row(
+            "SELECT is_pinned FROM group_messages WHERE id = ?1 AND session_id = ?2",
+            params![&message_id, &session_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    if let Some(is_pinned) = current {
+        let next = if is_pinned == 0 { 1 } else { 0 };
+        conn.execute(
+            "UPDATE group_messages SET is_pinned = ?1 WHERE id = ?2 AND session_id = ?3",
+            params![next, &message_id, &session_id],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        conn.execute(
+            "UPDATE group_sessions SET updated_at = ?1 WHERE id = ?2",
+            params![now, &session_id],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        Ok(Some(next != 0))
+    } else {
+        Ok(None)
+    }
 }
 
 #[tauri::command]
@@ -2064,17 +2134,21 @@ pub fn group_session_update_memories(
     memory_embeddings_json: String,
     memory_summary: Option<String>,
     memory_summary_token_count: Option<i32>,
+    memory_status: Option<String>,
+    memory_error: Option<String>,
     pool: State<'_, SwappablePool>,
 ) -> Result<(), String> {
     let conn = pool.get_connection()?;
     let now = now_ms();
 
     conn.execute(
-        "UPDATE group_sessions SET memory_embeddings = ?1, memory_summary = ?2, memory_summary_token_count = ?3, updated_at = ?4 WHERE id = ?5",
+        "UPDATE group_sessions SET memory_embeddings = ?1, memory_summary = ?2, memory_summary_token_count = ?3, memory_status = ?4, memory_error = ?5, updated_at = ?6 WHERE id = ?7",
         params![
             memory_embeddings_json,
             memory_summary.unwrap_or_default(),
             memory_summary_token_count.unwrap_or(0),
+            memory_status.unwrap_or_else(|| "idle".to_string()),
+            memory_error,
             now,
             session_id
         ],
@@ -2112,6 +2186,8 @@ pub fn group_session_update_memories_internal(
     memory_summary: Option<&str>,
     memory_summary_token_count: i32,
     memory_tool_events: &[serde_json::Value],
+    memory_status: Option<&str>,
+    memory_error: Option<&str>,
 ) -> Result<(), String> {
     let now = now_ms();
     let memories_json = serde_json::to_string(memories)
@@ -2122,13 +2198,15 @@ pub fn group_session_update_memories_internal(
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
     conn.execute(
-        "UPDATE group_sessions SET memories = ?1, memory_embeddings = ?2, memory_summary = ?3, memory_summary_token_count = ?4, memory_tool_events = ?5, updated_at = ?6 WHERE id = ?7",
+        "UPDATE group_sessions SET memories = ?1, memory_embeddings = ?2, memory_summary = ?3, memory_summary_token_count = ?4, memory_tool_events = ?5, memory_status = ?6, memory_error = ?7, updated_at = ?8 WHERE id = ?9",
         params![
             memories_json,
             memory_embeddings_json,
             memory_summary.unwrap_or(""),
             memory_summary_token_count,
             memory_tool_events_json,
+            memory_status.unwrap_or("idle"),
+            memory_error,
             now,
             session_id
         ],

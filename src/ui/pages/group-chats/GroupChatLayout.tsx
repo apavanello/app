@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Outlet, useOutletContext, useParams } from "react-router-dom";
+import { listen } from "@tauri-apps/api/event";
 import type {
   GroupSession,
   Character,
@@ -10,7 +11,7 @@ import type {
 import { createDefaultChatAppearanceSettings } from "../../../core/storage/schemas";
 import { storageBridge } from "../../../core/storage/files";
 import { listCharacters, listPersonas, readSettings } from "../../../core/storage/repo";
-import { SETTINGS_UPDATED_EVENT } from "../../../core/storage/repo";
+import { SESSION_UPDATED_EVENT, SETTINGS_UPDATED_EVENT } from "../../../core/storage/repo";
 import { useImageData } from "../../hooks/useImageData";
 import {
   analyzeImageBrightness,
@@ -96,6 +97,44 @@ export function GroupChatLayout() {
     window.addEventListener(SETTINGS_UPDATED_EVENT, onSettingsUpdated);
     return () => window.removeEventListener(SETTINGS_UPDATED_EVENT, onSettingsUpdated);
   }, []);
+
+  useEffect(() => {
+    const onSessionUpdated = () => {
+      setLoadCount((c) => c + 1);
+    };
+    window.addEventListener(SESSION_UPDATED_EVENT, onSessionUpdated);
+    return () => window.removeEventListener(SESSION_UPDATED_EVENT, onSessionUpdated);
+  }, []);
+
+  useEffect(() => {
+    if (!groupSessionId) return;
+    let unlisteners: Array<() => void> = [];
+
+    const setup = async () => {
+      try {
+        const processing = await listen("group-dynamic-memory:processing", (event: any) => {
+          if (event.payload?.sessionId !== groupSessionId) return;
+          setLoadCount((c) => c + 1);
+        });
+        const success = await listen("group-dynamic-memory:success", (event: any) => {
+          if (event.payload?.sessionId !== groupSessionId) return;
+          setLoadCount((c) => c + 1);
+        });
+        const failure = await listen("group-dynamic-memory:error", (event: any) => {
+          if (event.payload?.sessionId !== groupSessionId) return;
+          setLoadCount((c) => c + 1);
+        });
+        unlisteners = [processing, success, failure];
+      } catch (err) {
+        console.error("GroupChatLayout: failed to setup memory listeners", err);
+      }
+    };
+
+    void setup();
+    return () => {
+      unlisteners.forEach((unlisten) => unlisten());
+    };
+  }, [groupSessionId]);
 
   const reloadSession = useCallback(() => {
     setLoadCount((c) => c + 1);

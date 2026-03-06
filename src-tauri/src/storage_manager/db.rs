@@ -605,6 +605,8 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
           memory_summary TEXT NOT NULL DEFAULT '',
           memory_summary_token_count INTEGER NOT NULL DEFAULT 0,
           memory_tool_events TEXT NOT NULL DEFAULT '[]',
+          memory_status TEXT,
+          memory_error TEXT,
           speaker_selection_method TEXT NOT NULL DEFAULT 'llm',
           FOREIGN KEY(persona_id) REFERENCES personas(id) ON DELETE SET NULL,
           FOREIGN KEY(group_character_id) REFERENCES group_characters(id) ON DELETE SET NULL
@@ -708,6 +710,20 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
     if !group_session_cols.contains("group_character_id") {
         conn.execute(
             "ALTER TABLE group_sessions ADD COLUMN group_character_id TEXT",
+            [],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    }
+    if !group_session_cols.contains("memory_status") {
+        conn.execute(
+            "ALTER TABLE group_sessions ADD COLUMN memory_status TEXT",
+            [],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    }
+    if !group_session_cols.contains("memory_error") {
+        conn.execute(
+            "ALTER TABLE group_sessions ADD COLUMN memory_error TEXT",
             [],
         )
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;

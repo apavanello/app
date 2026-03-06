@@ -9,6 +9,7 @@ import {
   SettingsSchema,
   PersonaSchema,
   MessageSchema,
+  GroupMessageSchema,
   GroupSessionSchema,
   type Character,
   type Session,
@@ -21,6 +22,7 @@ import {
   type Lorebook,
   type LorebookEntry,
   type GroupSession,
+  type GroupMessage,
   createDefaultSettings,
   createDefaultAccessibilitySettings,
 } from "./schemas";
@@ -772,6 +774,7 @@ export async function groupSessionAddMemory(
   memory: string,
 ): Promise<GroupSession | null> {
   const updated = await storageBridge.groupSessionAddMemory(sessionId, memory);
+  broadcastSessionUpdated();
   return updated ? GroupSessionSchema.parse(updated) : null;
 }
 
@@ -780,6 +783,7 @@ export async function groupSessionRemoveMemory(
   memoryIndex: number,
 ): Promise<GroupSession | null> {
   const updated = await storageBridge.groupSessionRemoveMemory(sessionId, memoryIndex);
+  broadcastSessionUpdated();
   return updated ? GroupSessionSchema.parse(updated) : null;
 }
 
@@ -789,6 +793,7 @@ export async function groupSessionUpdateMemory(
   newMemory: string,
 ): Promise<GroupSession | null> {
   const updated = await storageBridge.groupSessionUpdateMemory(sessionId, memoryIndex, newMemory);
+  broadcastSessionUpdated();
   return updated ? GroupSessionSchema.parse(updated) : null;
 }
 
@@ -797,6 +802,7 @@ export async function groupSessionToggleMemoryPin(
   memoryIndex: number,
 ): Promise<GroupSession | null> {
   const updated = await storageBridge.groupSessionToggleMemoryPin(sessionId, memoryIndex);
+  broadcastSessionUpdated();
   return updated ? GroupSessionSchema.parse(updated) : null;
 }
 
@@ -810,12 +816,27 @@ export async function groupSessionSetMemoryColdState(
     memoryIndex,
     isCold,
   );
+  broadcastSessionUpdated();
   return updated ? GroupSessionSchema.parse(updated) : null;
 }
 
 export async function getGroupSession(sessionId: string): Promise<GroupSession | null> {
   const data = await storageBridge.groupSessionGet(sessionId);
   return data ? GroupSessionSchema.parse(data) : null;
+}
+
+export async function listPinnedGroupMessages(sessionId: string): Promise<GroupMessage[]> {
+  const data = await storageBridge.groupMessagesListPinned(sessionId);
+  return z.array(GroupMessageSchema).parse(data);
+}
+
+export async function toggleGroupMessagePin(
+  sessionId: string,
+  messageId: string,
+): Promise<boolean | null> {
+  const nextPinned = await storageBridge.groupMessageTogglePin(sessionId, messageId);
+  broadcastSessionUpdated();
+  return nextPinned;
 }
 
 // Persona management functions

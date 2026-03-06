@@ -647,11 +647,15 @@ export const storageBridge = {
       beforeCreatedAt: beforeCreatedAt ?? null,
       beforeId: beforeId ?? null,
     }).then((s) => JSON.parse(s) as any[]),
+  groupMessagesListPinned: (sessionId: string) =>
+    invoke<string>("group_messages_list_pinned", { sessionId }).then((s) => JSON.parse(s) as any[]),
   groupMessageUpsert: (sessionId: string, message: unknown) =>
     invoke<string>("group_message_upsert", {
       sessionId,
       messageJson: JSON.stringify(message),
     }).then((s) => JSON.parse(s)),
+  groupMessageTogglePin: (sessionId: string, messageId: string) =>
+    invoke<boolean | null>("group_message_toggle_pin_state", { sessionId, messageId }),
   groupMessageDelete: (sessionId: string, messageId: string) =>
     invoke("group_message_delete", { sessionId, messageId }) as Promise<void>,
   groupMessagesDeleteAfter: (sessionId: string, messageId: string) =>
@@ -702,12 +706,16 @@ export const storageBridge = {
     memoryEmbeddings: unknown[],
     memorySummary?: string | null,
     memorySummaryTokenCount?: number | null,
+    memoryStatus?: string | null,
+    memoryError?: string | null,
   ) =>
     invoke("group_session_update_memories", {
       sessionId,
       memoryEmbeddingsJson: JSON.stringify(memoryEmbeddings),
       memorySummary: memorySummary ?? null,
       memorySummaryTokenCount: memorySummaryTokenCount ?? null,
+      memoryStatus: memoryStatus ?? null,
+      memoryError: memoryError ?? null,
     }) as Promise<void>,
   groupSessionUpdateManualMemories: (sessionId: string, memories: string[]) =>
     invoke("group_session_update_manual_memories", {

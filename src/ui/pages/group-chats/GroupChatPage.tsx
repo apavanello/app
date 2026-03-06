@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 
 import { storageBridge } from "../../../core/storage/files";
-import { generateGroupChatUserReply } from "../../../core/storage/repo";
+import { generateGroupChatUserReply, toggleGroupMessagePin } from "../../../core/storage/repo";
 import { useI18n } from "../../../core/i18n/context";
 import type {
   Character,
@@ -716,6 +716,11 @@ export function GroupChatPage() {
   const handleDeleteMessage = useCallback(async () => {
     if (!messageAction || !groupSessionId) return;
 
+    if (messageAction.message.isPinned) {
+      setActionError("Cannot delete pinned message. Unpin it first.");
+      return;
+    }
+
     setActionBusy(true);
     try {
       await storageBridge.groupMessageDelete(groupSessionId, messageAction.message.id);
@@ -735,6 +740,18 @@ export function GroupChatPage() {
   const handleRewindToMessage = useCallback(async () => {
     if (!messageAction || !groupSessionId) return;
 
+    const messageIndex = messages.findIndex((message) => message.id === messageAction.message.id);
+    if (messageIndex === -1) {
+      setActionError("Message not found");
+      return;
+    }
+
+    const hasPinnedAfter = messages.slice(messageIndex + 1).some((message) => message.isPinned);
+    if (hasPinnedAfter) {
+      setActionError("Cannot rewind: there are pinned messages after this point. Unpin them first.");
+      return;
+    }
+
     setActionBusy(true);
     try {
       await storageBridge.groupMessagesDeleteAfter(groupSessionId, messageAction.message.id);
@@ -751,7 +768,39 @@ export function GroupChatPage() {
     } finally {
       setActionBusy(false);
     }
-  }, [messageAction, groupSessionId, closeMessageActions]);
+  }, [messageAction, groupSessionId, closeMessageActions, messages]);
+
+  const handleTogglePin = useCallback(async () => {
+    if (!messageAction || !groupSessionId) return;
+
+    setActionBusy(true);
+    setActionError(null);
+    setActionStatus(null);
+    try {
+      const nextPinned = await toggleGroupMessagePin(groupSessionId, messageAction.message.id);
+      if (nextPinned === null) {
+        setActionError("Failed to toggle pin");
+        return;
+      }
+
+      const updatedMessages = messages.map((message) =>
+        message.id === messageAction.message.id ? { ...message, isPinned: nextPinned } : message,
+      );
+      setMessages(updatedMessages);
+      setMessageAction({
+        ...messageAction,
+        message: { ...messageAction.message, isPinned: nextPinned },
+      });
+      setActionStatus(nextPinned ? "Message pinned" : "Message unpinned");
+      setTimeout(() => {
+        closeMessageActions();
+      }, 1000);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to toggle pin");
+    } finally {
+      setActionBusy(false);
+    }
+  }, [closeMessageActions, groupSessionId, messageAction, messages]);
 
   const handleSaveEdit = useCallback(async () => {
     if (!messageAction || !groupSessionId || !editDraft.trim()) return;
@@ -1280,6 +1329,7 @@ export function GroupChatPage() {
         handleSaveEdit={handleSaveEdit}
         handleDeleteMessage={handleDeleteMessage}
         handleRewindToMessage={handleRewindToMessage}
+        handleTogglePin={handleTogglePin}
         handleCopyMessage={handleCopyMessage}
         setMessageAction={setMessageAction}
         onRegenerate={(charId) => {

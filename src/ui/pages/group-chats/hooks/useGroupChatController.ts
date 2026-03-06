@@ -3,7 +3,11 @@ import type { MutableRefObject, RefObject } from "react";
 import { listen } from "@tauri-apps/api/event";
 
 import { storageBridge } from "../../../../core/storage/files";
-import { listCharacters, listPersonas } from "../../../../core/storage/repo";
+import {
+  listCharacters,
+  listPersonas,
+  toggleGroupMessagePin,
+} from "../../../../core/storage/repo";
 import type {
   GroupSession,
   GroupMessage,
@@ -64,6 +68,7 @@ type GroupChatController = {
   handleCopyMessage: () => Promise<void>;
   handleDeleteMessage: () => Promise<void>;
   handleRewindToMessage: () => Promise<void>;
+  handleTogglePin: () => Promise<void>;
   handleSaveEdit: () => Promise<void>;
   handleScroll: () => void;
   scrollToBottom: () => void;
@@ -207,6 +212,36 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
       unlisten.then((fn) => fn());
     };
   }, [groupSessionId, characters, setUi]);
+
+  useEffect(() => {
+    if (!groupSessionId) return;
+    let unlisteners: Array<() => void> = [];
+
+    const setup = async () => {
+      try {
+        const processing = await listen("group-dynamic-memory:processing", (event: any) => {
+          if (event.payload?.sessionId !== groupSessionId) return;
+          void loadData();
+        });
+        const success = await listen("group-dynamic-memory:success", (event: any) => {
+          if (event.payload?.sessionId !== groupSessionId) return;
+          void loadData();
+        });
+        const failure = await listen("group-dynamic-memory:error", (event: any) => {
+          if (event.payload?.sessionId !== groupSessionId) return;
+          void loadData();
+        });
+        unlisteners = [processing, success, failure];
+      } catch (err) {
+        console.error("Failed to setup group memory listeners:", err);
+      }
+    };
+
+    void setup();
+    return () => {
+      unlisteners.forEach((unlisten) => unlisten());
+    };
+  }, [groupSessionId, loadData]);
 
   const handleScroll = useCallback(() => {
     if (!scrollContainerRef.current) return;
@@ -694,6 +729,11 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
   const handleDeleteMessage = useCallback(async () => {
     if (!ui.messageAction || !groupSessionId) return;
 
+    if (ui.messageAction.message.isPinned) {
+      setUi({ actionError: "Cannot delete pinned message. Unpin it first." });
+      return;
+    }
+
     setUi({ actionBusy: true });
     try {
       await storageBridge.groupMessageDelete(groupSessionId, ui.messageAction.message.id);
@@ -713,6 +753,20 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
   const handleRewindToMessage = useCallback(async () => {
     if (!ui.messageAction || !groupSessionId) return;
 
+    const messageIndex = messages.findIndex((message) => message.id === ui.messageAction?.message.id);
+    if (messageIndex === -1) {
+      setUi({ actionError: "Message not found" });
+      return;
+    }
+
+    const hasPinnedAfter = messages.slice(messageIndex + 1).some((message) => message.isPinned);
+    if (hasPinnedAfter) {
+      setUi({
+        actionError: "Cannot rewind: there are pinned messages after this point. Unpin them first.",
+      });
+      return;
+    }
+
     setUi({ actionBusy: true });
     try {
       await storageBridge.groupMessagesDeleteAfter(groupSessionId, ui.messageAction.message.id);
@@ -730,6 +784,38 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
       setUi({ actionBusy: false });
     }
   }, [ui.messageAction, groupSessionId, closeMessageActions, setUi]);
+
+  const handleTogglePin = useCallback(async () => {
+    if (!ui.messageAction || !groupSessionId) return;
+
+    setUi({ actionBusy: true, actionError: null, actionStatus: null });
+    try {
+      const nextPinned = await toggleGroupMessagePin(groupSessionId, ui.messageAction.message.id);
+      if (nextPinned === null) {
+        setUi({ actionError: "Failed to toggle pin" });
+        return;
+      }
+
+      const updatedMessages = messages.map((message) =>
+        message.id === ui.messageAction?.message.id ? { ...message, isPinned: nextPinned } : message,
+      );
+      setMessages(updatedMessages);
+      setUi({
+        actionStatus: nextPinned ? "Message pinned" : "Message unpinned",
+        messageAction: {
+          ...ui.messageAction,
+          message: { ...ui.messageAction.message, isPinned: nextPinned },
+        },
+      });
+      setTimeout(() => {
+        closeMessageActions();
+      }, 1000);
+    } catch (err) {
+      setUi({ actionError: err instanceof Error ? err.message : "Failed to toggle pin" });
+    } finally {
+      setUi({ actionBusy: false });
+    }
+  }, [closeMessageActions, groupSessionId, messages, setUi, ui.messageAction]);
 
   const handleSaveEdit = useCallback(async () => {
     if (!ui.messageAction || !groupSessionId || !ui.editDraft.trim()) return;
@@ -816,6 +902,7 @@ export function useGroupChatController(groupSessionId?: string): GroupChatContro
     handleCopyMessage,
     handleDeleteMessage,
     handleRewindToMessage,
+    handleTogglePin,
     handleSaveEdit,
     handleScroll,
     scrollToBottom,
