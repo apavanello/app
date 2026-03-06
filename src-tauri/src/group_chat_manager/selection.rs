@@ -291,7 +291,6 @@ pub fn build_select_next_speaker_tool(characters: &[CharacterInfo]) -> serde_jso
 /// This uses a scoring system based on:
 /// - Participation balance (favor underrepresented characters)
 /// - Recency (soft penalty for speaking too recently)
-/// - Name mentions in user message
 pub fn heuristic_select_speaker(context: &GroupChatContext) -> Result<SelectionResult, String> {
     let muted_ids: std::collections::HashSet<&str> = context
         .session
@@ -371,14 +370,6 @@ pub fn heuristic_select_speaker(context: &GroupChatContext) -> Result<SelectionR
             // Never spoken, boost
             score += 50.0;
             reasons.push("hasn't spoken yet".to_string());
-        }
-
-        // Check if user message contains character name (soft mention detection)
-        let user_msg_lower = context.user_message.to_lowercase();
-        let char_name_lower = character.name.to_lowercase();
-        if user_msg_lower.contains(&char_name_lower) {
-            score += 80.0;
-            reasons.push("mentioned in user message".to_string());
         }
 
         let reasoning = if reasons.is_empty() {
@@ -723,5 +714,51 @@ mod tests {
         let result =
             round_robin_select_speaker(&context).expect("round-robin selection should succeed");
         assert_eq!(result.character_id, "char-3");
+    }
+
+    #[test]
+    fn test_heuristic_does_not_treat_plain_name_as_forced_selection() {
+        let mut context = test_context(vec![]);
+        context.user_message = "Alice should maybe answer this.".to_string();
+        context.participation_stats = vec![
+            crate::storage_manager::group_sessions::GroupParticipation {
+                id: "p1".to_string(),
+                session_id: "session-1".to_string(),
+                character_id: "char-1".to_string(),
+                speak_count: 10,
+                last_spoke_turn: Some(4),
+                last_spoke_at: Some(0),
+            },
+            crate::storage_manager::group_sessions::GroupParticipation {
+                id: "p2".to_string(),
+                session_id: "session-1".to_string(),
+                character_id: "char-2".to_string(),
+                speak_count: 0,
+                last_spoke_turn: None,
+                last_spoke_at: None,
+            },
+        ];
+        context.recent_messages = vec![crate::storage_manager::group_sessions::GroupMessage {
+            id: "m1".to_string(),
+            session_id: "session-1".to_string(),
+            role: "assistant".to_string(),
+            content: "Previous reply".to_string(),
+            speaker_character_id: Some("char-1".to_string()),
+            turn_number: 4,
+            created_at: 0,
+            usage: None,
+            variants: None,
+            selected_variant_id: None,
+            is_pinned: false,
+            attachments: vec![],
+            used_lorebook_entries: vec![],
+            reasoning: None,
+            selection_reasoning: None,
+            model_id: None,
+        }];
+
+        let result =
+            heuristic_select_speaker(&context).expect("heuristic selection should succeed");
+        assert_eq!(result.character_id, "char-2");
     }
 }
