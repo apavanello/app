@@ -12,6 +12,8 @@ use crate::transport;
 use crate::utils::{log_error, log_info, log_warn};
 
 const LOCAL_PROVIDER_ID: &str = "llamacpp";
+#[cfg(not(mobile))]
+const TOKENIZER_ADD_BOS_METADATA_KEY: &str = "tokenizer.ggml.add_bos_token";
 
 #[cfg(not(mobile))]
 mod desktop {
@@ -57,10 +59,17 @@ mod desktop {
         source_label: String,
     }
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum PromptMode {
+        TemplatedChat,
+        RawCompletion,
+    }
+
     struct BuiltPrompt {
         prompt: String,
         template_source: String,
         used_raw_completion_fallback: bool,
+        prompt_mode: PromptMode,
     }
 
     fn push_unique_u32(out: &mut Vec<u32>, value: u32) {
@@ -637,7 +646,10 @@ mod desktop {
                 crate::utils::err_msg(
                     module_path!(),
                     line!(),
-                    format!("Invalid llama chat template preset '{}': {e}", template_preset),
+                    format!(
+                        "Invalid llama chat template preset '{}': {e}",
+                        template_preset
+                    ),
                 )
             })?;
             return Ok(ResolvedChatTemplate {
@@ -698,6 +710,7 @@ mod desktop {
                             prompt: build_fallback_prompt(messages),
                             template_source: "raw completion fallback".to_string(),
                             used_raw_completion_fallback: true,
+                            prompt_mode: PromptMode::RawCompletion,
                         });
                     }
                     return Err(err);
@@ -709,6 +722,7 @@ mod desktop {
                 prompt,
                 template_source: resolved_template.source_label,
                 used_raw_completion_fallback: false,
+                prompt_mode: PromptMode::TemplatedChat,
             }),
             Err(err) => {
                 if allow_raw_completion_fallback {
@@ -716,6 +730,7 @@ mod desktop {
                         prompt: build_fallback_prompt(messages),
                         template_source: resolved_template.source_label,
                         used_raw_completion_fallback: true,
+                        prompt_mode: PromptMode::RawCompletion,
                     })
                 } else {
                     Err(crate::utils::err_msg(
@@ -727,6 +742,72 @@ mod desktop {
                         ),
                     ))
                 }
+            }
+        }
+    }
+
+    fn model_tokenizer_adds_bos(model: &LlamaModel) -> Option<bool> {
+        let raw_value = model.meta_val_str(TOKENIZER_ADD_BOS_METADATA_KEY).ok()?;
+        match raw_value.trim().to_ascii_lowercase().as_str() {
+            "true" | "1" => Some(true),
+            "false" | "0" => Some(false),
+            _ => None,
+        }
+    }
+
+    fn resolve_prompt_add_bos(model: &LlamaModel, prompt_mode: PromptMode) -> AddBos {
+        match prompt_mode {
+            PromptMode::TemplatedChat => AddBos::Never,
+            PromptMode::RawCompletion => match model_tokenizer_adds_bos(model) {
+                Some(true) => AddBos::Always,
+                Some(false) => AddBos::Never,
+                None => {
+                    // Preserve historical raw-completion behavior if the GGUF does not expose a
+                    // tokenizer BOS default we can trust.
+                    AddBos::Always
+                }
+            },
+        }
+    }
+
+    fn prompt_mode_label(prompt_mode: PromptMode) -> &'static str {
+        match prompt_mode {
+            PromptMode::TemplatedChat => "templated_chat",
+            PromptMode::RawCompletion => "raw_completion",
+        }
+    }
+
+    fn add_bos_label(add_bos: AddBos) -> &'static str {
+        match add_bos {
+            AddBos::Always => "always",
+            AddBos::Never => "never",
+        }
+    }
+
+    fn model_tokenizer_add_bos_label(model_tokenizer_adds_bos: Option<bool>) -> &'static str {
+        match model_tokenizer_adds_bos {
+            Some(true) => "true",
+            Some(false) => "false",
+            None => "unknown",
+        }
+    }
+
+    fn prompt_add_bos_reason(
+        prompt_mode: PromptMode,
+        model_tokenizer_adds_bos: Option<bool>,
+    ) -> &'static str {
+        match prompt_mode {
+            PromptMode::TemplatedChat => {
+                "templated chat prompt already carries template/model BOS handling"
+            }
+            PromptMode::RawCompletion if model_tokenizer_adds_bos == Some(true) => {
+                "raw completion follows tokenizer/model BOS default=enabled"
+            }
+            PromptMode::RawCompletion if model_tokenizer_adds_bos == Some(false) => {
+                "raw completion follows tokenizer/model BOS default=disabled"
+            }
+            PromptMode::RawCompletion => {
+                "raw completion metadata missing or invalid; using compatibility fallback add_bos=always"
             }
         }
     }
@@ -1046,11 +1127,28 @@ mod desktop {
                 log_info(
                     &app,
                     "llama_cpp",
-                    format!("using llama chat template source={}", built_prompt.template_source),
+                    format!(
+                        "using llama chat template source={}",
+                        built_prompt.template_source
+                    ),
                 );
             }
+            let model_default_add_bos = model_tokenizer_adds_bos(model);
+            let prompt_add_bos = resolve_prompt_add_bos(model, built_prompt.prompt_mode);
+            log_info(
+                &app,
+                "llama_cpp",
+                format!(
+                    "llama prompt tokenization mode={} add_bos={} model_tokenizer_add_bos={} source={} reason={}",
+                    prompt_mode_label(built_prompt.prompt_mode),
+                    add_bos_label(prompt_add_bos),
+                    model_tokenizer_add_bos_label(model_default_add_bos),
+                    built_prompt.template_source,
+                    prompt_add_bos_reason(built_prompt.prompt_mode, model_default_add_bos),
+                ),
+            );
             let prompt = built_prompt.prompt;
-            let tokens = model.str_to_token(&prompt, AddBos::Always).map_err(|e| {
+            let tokens = model.str_to_token(&prompt, prompt_add_bos).map_err(|e| {
                 crate::utils::err_msg(
                     module_path!(),
                     line!(),
