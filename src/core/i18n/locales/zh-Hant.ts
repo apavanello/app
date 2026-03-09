@@ -1,3 +1,4 @@
+import type { DeepPartialMessageTree } from "../types";
 import { LocaleMetadata } from ".";
 import type { LocaleMessages } from "./en";
 
@@ -6,7 +7,7 @@ export const zhHantMetadata: LocaleMetadata = {
   label: "繁體中文",
 } as const;
 
-export const zhHantMessages: LocaleMessages = {
+export const zhHantMessages: DeepPartialMessageTree<LocaleMessages> = {
   common: {
     nav: {
       chats: "對話",
@@ -1568,14 +1569,14 @@ export const zhHantMessages: LocaleMessages = {
       surfaceElDesc: "卡片、對話框、提升元素",
       nav: "導航",
       navDesc: "頂部和底部導航列",
-      foreground: "Foreground",
-      foregroundDesc: "Borders, overlays, navigation, UI chrome",
-      appText: "App Text",
-      appTextDesc: "Primary text and interface labels",
-      appTextMuted: "Muted Text",
-      appTextMutedDesc: "Secondary text and support copy",
-      appTextSubtle: "Subtle Text",
-      appTextSubtleDesc: "Hints, helper text, placeholders",
+      foreground: "前景",
+      foregroundDesc: "邊框、覆蓋層、導覽與介面外框",
+      appText: "應用程式文字",
+      appTextDesc: "主要文字與介面標籤",
+      appTextMuted: "次要文字",
+      appTextMutedDesc: "次要文字與輔助說明",
+      appTextSubtle: "細微文字",
+      appTextSubtleDesc: "提示、輔助文字與預留位置",
       accent: "重點色",
       accentDesc: "主要操作、成功",
       info: "資訊",
@@ -1590,9 +1591,9 @@ export const zhHantMessages: LocaleMessages = {
     presetsLabel: "預設主題",
     customPresetsLabel: "自訂預設",
     previewLabel: "預覽",
-    settingsCardsLabel: "Settings Cards",
-    settingsCardsOpacity: "Card Opacity",
-    settingsCardsOpacityDesc: "Controls how transparent settings cards and list rows feel.",
+    settingsCardsLabel: "設定卡片",
+    settingsCardsOpacity: "卡片不透明度",
+    settingsCardsOpacityDesc: "控制設定卡片與清單列看起來有多透明。",
     importButton: "匯入",
     exportButton: "匯出",
     resetAllButton: "全部重設",
