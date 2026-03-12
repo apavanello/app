@@ -1389,6 +1389,9 @@ export const hiMessages: DeepPartialMessageTree<LocaleMessages> = {
       nameLabel: "पर्सोना नाम",
       namePlaceholder: "उदा., पेशेवर, रचनात्मक लेखक, छात्र...",
       nameHint: "अपने पर्सोना को एक वर्णनात्मक नाम दें",
+      nicknameLabel: "उपनाम (वैकल्पिक)",
+      nicknamePlaceholder: "जैसे, वर्क वैरिएंट, आरपीजी मोड...",
+      nicknameHint: "आपकी लाइब्रेरी में इस व्यक्तित्व के वेरिएंट के बीच अंतर करने के लिए एक निजी उपनाम",
       descriptionLabel: "विवरण",
       descriptionPlaceholder:
         "वर्णन करें कि AI आपको कैसे संबोधित करे, आपकी प्राथमिकताएँ, पृष्ठभूमि, या संवाद शैली...",

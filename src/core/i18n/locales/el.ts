@@ -1403,6 +1403,9 @@ export const elMessages: DeepPartialMessageTree<LocaleMessages> = {
       nameLabel: "ΟΝΟΜΑ ΠΕΡΣΟΝΑΣ",
       namePlaceholder: "π.χ., Επαγγελματίας, Δημιουργικός Συγγραφέας, Φοιτητής...",
       nameHint: "Δώστε στην περσόνα σας ένα περιγραφικό όνομα",
+      nicknameLabel: "ΨΕΥΔΩΝΥΜΟ (ΠΡΟΑΙΡΕΤΙΚΟ)",
+      nicknamePlaceholder: "π.χ., Παραλλαγή Εργασίας, Λειτουργία RPG...",
+      nicknameHint: "Ένα ιδιωτικό ψευδώνυμο για τη διάκριση των παραλλαγών αυτής της περσόνας στη βιβλιοθήκη σας",
       descriptionLabel: "ΠΕΡΙΓΡΑΦΗ",
       descriptionPlaceholder:
         "Περιγράψτε πώς θα σας απευθύνεται η AI, τις προτιμήσεις σας, ιστορικό ή στυλ επικοινωνίας...",

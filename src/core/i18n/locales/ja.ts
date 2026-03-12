@@ -1388,6 +1388,9 @@ export const jaMessages: DeepPartialMessageTree<LocaleMessages> = {
       nameLabel: "ペルソナ名",
       namePlaceholder: "例：プロフェッショナル、クリエイティブライター、学生...",
       nameHint: "ペルソナに説明的な名前を付けてください",
+      nicknameLabel: "ニックネーム (任意)",
+      nicknamePlaceholder: "例：仕事用、RPGモードなど...",
+      nicknameHint: "ライブラリ内のこのペルソナのバリエーションを区別するためのプライベートなニックネーム",
       descriptionLabel: "説明",
       descriptionPlaceholder:
         "AIがあなたにどう対応すべきか、あなたの好み、背景、コミュニケーションスタイルを説明...",

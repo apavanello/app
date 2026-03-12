@@ -1402,6 +1402,9 @@ export const nlMessages: DeepPartialMessageTree<LocaleMessages> = {
       nameLabel: "PERSONANAAM",
       namePlaceholder: "bijv. Professioneel, Creatief Schrijver, Student...",
       nameHint: "Geef je persona een beschrijvende naam",
+      nicknameLabel: "BIJNAAM (OPTIONEEL)",
+      nicknamePlaceholder: "bijv. Werkvariant, RPG-modus...",
+      nicknameHint: "Een privébynaam om varianten van deze persona in je bibliotheek te onderscheiden",
       descriptionLabel: "BESCHRIJVING",
       descriptionPlaceholder:
         "Beschrijf hoe de AI je moet aanspreken, je voorkeuren, achtergrond of communicatiestijl...",

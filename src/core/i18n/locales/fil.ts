@@ -1414,6 +1414,9 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
       nameLabel: "PANGALAN NG PERSONA",
       namePlaceholder: "hal., Professional, Creative Writer, Estudyante...",
       nameHint: "Bigyan ang iyong persona ng mapaglarawang pangalan",
+      nicknameLabel: "PALAYAW (OPTIONAL)",
+      nicknamePlaceholder: "hal., Work Variant, RPG Mode...",
+      nicknameHint: "Isang pribadong palayaw upang makilala ang mga variant ng persona na ito sa iyong library",
       descriptionLabel: "PAGLALARAWAN",
       descriptionPlaceholder:
         "Ilarawan kung paano ka dapat tawaging ng AI, ang iyong mga kagustuhan, background, o estilo ng komunikasyon...",

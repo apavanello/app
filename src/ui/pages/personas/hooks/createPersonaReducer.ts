@@ -10,6 +10,7 @@ import type { AvatarCrop } from "../../../../core/storage/schemas";
 export interface PersonaFormState {
   title: string;
   description: string;
+  nickname: string;
   avatarPath: string | null;
   avatarCrop: AvatarCrop | null;
   avatarRoundPath: string | null;
@@ -22,6 +23,7 @@ export interface PersonaFormState {
 export type PersonaFormAction =
   | { type: "set_title"; value: string }
   | { type: "set_description"; value: string }
+  | { type: "set_nickname"; value: string }
   | { type: "set_avatar_path"; value: string | null }
   | { type: "set_avatar_crop"; value: AvatarCrop | null }
   | { type: "set_avatar_round_path"; value: string | null }
@@ -34,6 +36,7 @@ export type PersonaFormAction =
       payload: {
         title: string;
         description: string;
+        nickname?: string;
         avatarPath: string | null;
         avatarCrop?: AvatarCrop | null;
         avatarRoundPath?: string | null;
@@ -43,6 +46,7 @@ export type PersonaFormAction =
 export const initialCreatePersonaState: PersonaFormState = {
   title: "",
   description: "",
+  nickname: "",
   avatarPath: null,
   avatarCrop: null,
   avatarRoundPath: null,
@@ -61,6 +65,8 @@ export function createPersonaReducer(
       return { ...state, title: action.value };
     case "set_description":
       return { ...state, description: action.value };
+    case "set_nickname":
+      return { ...state, nickname: action.value };
     case "set_avatar_path":
       return { ...state, avatarPath: action.value };
     case "set_avatar_crop":
@@ -80,6 +86,7 @@ export function createPersonaReducer(
         ...state,
         title: action.payload.title,
         description: action.payload.description,
+        nickname: action.payload.nickname ?? "",
         avatarPath: action.payload.avatarPath,
         avatarCrop: action.payload.avatarCrop ?? null,
         avatarRoundPath: action.payload.avatarRoundPath ?? null,
@@ -147,6 +154,7 @@ export function useCreatePersonaController() {
           payload: {
             title: importedPersona.title,
             description: importedPersona.description,
+            nickname: importedPersona.nickname ?? "",
             avatarPath: importedPersona.avatarPath || null,
             avatarCrop: importedPersona.avatarCrop ?? null,
           },
@@ -194,6 +202,7 @@ export function useCreatePersonaController() {
         id: personaId,
         title: state.title.trim(),
         description: state.description.trim(),
+        nickname: state.nickname.trim() || undefined,
         avatarPath: avatarFilename,
         avatarCrop: avatarFilename ? (state.avatarCrop ?? undefined) : undefined,
         isDefault: state.isDefault,

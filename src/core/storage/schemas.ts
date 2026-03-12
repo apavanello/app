@@ -2091,7 +2091,7 @@ export type AvatarCrop = z.infer<typeof AvatarCropSchema>;
 export const CharacterSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),
-  nickname: z.string().optional(),
+  nickname: z.string().nullish(),
   avatarPath: z.string().optional(),
   avatarCrop: AvatarCropSchema.optional(),
   backgroundImagePath: z.string().optional(),
@@ -2192,6 +2192,7 @@ export const PersonaSchema = z.object({
   id: z.string().uuid(),
   title: z.string().min(1),
   description: z.string().min(1),
+  nickname: z.string().nullish(),
   avatarPath: z.string().optional(),
   avatarCrop: AvatarCropSchema.optional(),
   isDefault: z.boolean().default(false),

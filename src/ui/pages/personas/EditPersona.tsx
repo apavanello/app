@@ -27,6 +27,7 @@ export function EditPersonaPage() {
       error,
       title,
       description,
+      nickname,
       isDefault,
       avatarPath,
       avatarCrop,
@@ -34,6 +35,7 @@ export function EditPersonaPage() {
     },
     setTitle,
     setDescription,
+    setNickname,
     setIsDefault,
     setAvatarPath,
     setAvatarCrop,
@@ -148,6 +150,18 @@ export function EditPersonaPage() {
               className="w-full rounded-xl border border-fg/10 bg-surface-el/20 px-3 py-2 text-fg placeholder-fg/40 transition focus:border-fg/30 focus:outline-none"
             />
             <p className="text-xs text-fg/50">{t("personas.edit.nameHint")}</p>
+          </div>
+
+          {/* Nickname Input */}
+          <div className="space-y-2">
+            <label className="text-[11px] font-medium text-fg/70">{t("personas.edit.nicknameLabel")}</label>
+            <input
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+              placeholder={t("personas.edit.nicknamePlaceholder")}
+              className="w-full rounded-xl border border-fg/10 bg-surface-el/20 px-3 py-2 text-fg placeholder-fg/40 transition focus:border-fg/30 focus:outline-none"
+            />
+            <p className="text-xs text-fg/50">{t("personas.edit.nicknameHint")}</p>
           </div>
 
           {/* Description Input */}

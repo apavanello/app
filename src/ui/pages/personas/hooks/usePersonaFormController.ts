@@ -12,6 +12,7 @@ type PersonaFormState = {
   error: string | null;
   title: string;
   description: string;
+  nickname: string;
   isDefault: boolean;
   avatarPath: string | null;
   avatarCrop: AvatarCrop | null;
@@ -33,6 +34,7 @@ const initialState: PersonaFormState = {
   error: null,
   title: "",
   description: "",
+  nickname: "",
   isDefault: false,
   avatarPath: null,
   avatarCrop: null,
@@ -62,6 +64,7 @@ export function usePersonaFormController(personaId: string | undefined) {
   const initialStateRef = useRef<{
     title: string;
     description: string;
+    nickname: string;
     isDefault: boolean;
     avatarPath: string | null;
     avatarCrop: string;
@@ -99,18 +102,20 @@ export function usePersonaFormController(personaId: string | undefined) {
         payload: {
           title: persona.title,
           description: persona.description,
+          nickname: persona.nickname ?? "",
           isDefault: persona.isDefault ?? false,
           avatarPath: avatarDataUrl,
           avatarCrop: persona.avatarCrop ?? null,
           avatarRoundPath: avatarRoundDataUrl,
-        },
-      });
+          },
+          });
 
-      // Store initial state for change detection
-      initialStateRef.current = {
-        title: persona.title,
-        description: persona.description,
-        isDefault: persona.isDefault ?? false,
+          // Store initial state for change detection
+          initialStateRef.current = {
+          title: persona.title,
+          description: persona.description,
+          nickname: persona.nickname ?? "",
+          isDefault: persona.isDefault ?? false,
         avatarPath: avatarDataUrl,
         avatarCrop: JSON.stringify(persona.avatarCrop ?? null),
         avatarRoundPath: JSON.stringify(avatarRoundDataUrl ?? null),
@@ -139,6 +144,10 @@ export function usePersonaFormController(personaId: string | undefined) {
     dispatch({ type: "set_fields", payload: { description: value } });
   }, []);
 
+  const setNickname = useCallback((value: string) => {
+    dispatch({ type: "set_fields", payload: { nickname: value } });
+  }, []);
+
   const setIsDefault = useCallback((value: boolean) => {
     dispatch({ type: "set_fields", payload: { isDefault: value } });
   }, []);
@@ -160,7 +169,8 @@ export function usePersonaFormController(personaId: string | undefined) {
       return;
     }
 
-    const { title, description, isDefault, avatarPath, avatarCrop, avatarRoundPath } = state;
+    const { title, description, nickname, isDefault, avatarPath, avatarCrop, avatarRoundPath } =
+      state;
     if (!title.trim() || !description.trim()) {
       return;
     }
@@ -184,6 +194,7 @@ export function usePersonaFormController(personaId: string | undefined) {
         id: personaId,
         title: title.trim(),
         description: description.trim(),
+        nickname: nickname.trim() || undefined,
         isDefault,
         avatarPath: avatarFilename,
         avatarCrop: avatarFilename ? (avatarCrop ?? undefined) : undefined,
@@ -193,6 +204,7 @@ export function usePersonaFormController(personaId: string | undefined) {
       initialStateRef.current = {
         title: title.trim(),
         description: description.trim(),
+        nickname: nickname.trim(),
         isDefault,
         avatarPath,
         avatarCrop: JSON.stringify(avatarCrop ?? null),
@@ -205,6 +217,7 @@ export function usePersonaFormController(personaId: string | undefined) {
         payload: {
           title: title.trim(),
           description: description.trim(),
+          nickname: nickname.trim(),
         },
       });
     } catch (error: any) {
@@ -216,7 +229,7 @@ export function usePersonaFormController(personaId: string | undefined) {
     } finally {
       dispatch({ type: "set_saving", payload: false });
     }
-  }, [personaId, state, navigate]);
+  }, [personaId, state]);
 
   const resetToInitial = useCallback(() => {
     const initial = initialStateRef.current;
@@ -226,6 +239,7 @@ export function usePersonaFormController(personaId: string | undefined) {
       payload: {
         title: initial.title,
         description: initial.description,
+        nickname: initial.nickname,
         isDefault: initial.isDefault,
         avatarPath: initial.avatarPath,
         avatarCrop: JSON.parse(initial.avatarCrop) as AvatarCrop | null,
@@ -248,6 +262,7 @@ export function usePersonaFormController(personaId: string | undefined) {
     const hasChanges =
       state.title !== initial.title ||
       state.description !== initial.description ||
+      state.nickname !== initial.nickname ||
       state.isDefault !== initial.isDefault ||
       state.avatarPath !== initial.avatarPath ||
       JSON.stringify(state.avatarCrop ?? null) !== initial.avatarCrop ||
@@ -260,6 +275,7 @@ export function usePersonaFormController(personaId: string | undefined) {
     state,
     setTitle,
     setDescription,
+    setNickname,
     setIsDefault,
     setAvatarPath,
     setAvatarCrop,

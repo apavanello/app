@@ -1381,6 +1381,9 @@ export const koMessages: DeepPartialMessageTree<LocaleMessages> = {
       nameLabel: "페르소나 이름",
       namePlaceholder: "예: 전문가, 창작 작가, 학생...",
       nameHint: "페르소나에 설명적인 이름을 부여하세요",
+      nicknameLabel: "닉네임 (선택 사항)",
+      nicknamePlaceholder: "예: 업무용, RPG 모드...",
+      nicknameHint: "라이브러리에서 이 페르소나의 변체를 구분하기 위한 개인 닉네임",
       descriptionLabel: "설명",
       descriptionPlaceholder:
         "AI가 당신을 어떻게 지칭해야 하는지, 선호도, 배경 또는 커뮤니케이션 스타일을 설명하세요...",

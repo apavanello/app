@@ -1390,6 +1390,9 @@ export const ruMessages: DeepPartialMessageTree<LocaleMessages> = {
       nameLabel: "ИМЯ ПЕРСОНЫ",
       namePlaceholder: "напр., Профессионал, Писатель, Студент...",
       nameHint: "Дайте персоне описательное имя",
+      nicknameLabel: "ПСЕВДОНИМ (ОПЦИОНАЛЬНО)",
+      nicknamePlaceholder: "напр., Рабочий вариант, Режим RPG...",
+      nicknameHint: "Личный псевдоним, чтобы различать варианты этой персоны в вашей библиотеке",
       descriptionLabel: "ОПИСАНИЕ",
       descriptionPlaceholder:
         "Опишите, как AI должен обращаться к вам, ваши предпочтения, предысторию или стиль общения...",

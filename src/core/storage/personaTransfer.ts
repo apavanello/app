@@ -17,6 +17,7 @@ export interface PersonaExportPackage {
 export interface PersonaExportData {
   title: string;
   description: string;
+  nickname?: string;
   avatarCrop?: AvatarCrop;
 }
 

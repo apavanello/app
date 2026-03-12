@@ -1408,6 +1408,9 @@ export const frMessages: DeepPartialMessageTree<LocaleMessages> = {
       nameLabel: "NOM DU PERSONA",
       namePlaceholder: "ex. Professionnel, Écrivain créatif, Étudiant...",
       nameHint: "Donnez un nom descriptif à votre persona",
+      nicknameLabel: "SURNOM (OPTIONNEL)",
+      nicknamePlaceholder: "ex: Variante de travail, Mode RPG...",
+      nicknameHint: "Un surnom privé pour distinguer les variantes de ce persona dans votre bibliothèque",
       descriptionLabel: "DESCRIPTION",
       descriptionPlaceholder:
         "Décrivez comment l'IA doit s'adresser à vous, vos préférences, votre parcours ou votre style de communication...",

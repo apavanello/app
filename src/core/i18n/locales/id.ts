@@ -1390,6 +1390,9 @@ export const idMessages: DeepPartialMessageTree<LocaleMessages> = {
       nameLabel: "NAMA PERSONA",
       namePlaceholder: "mis., Profesional, Penulis Kreatif, Pelajar...",
       nameHint: "Berikan nama deskriptif untuk persona Anda",
+      nicknameLabel: "NAMA PANGGILAN (OPSIONAL)",
+      nicknamePlaceholder: "misal, Varian Kerja, Mode RPG...",
+      nicknameHint: "Nama panggilan pribadi untuk membedakan varian persona ini di perpustakaan Anda",
       descriptionLabel: "DESKRIPSI",
       descriptionPlaceholder:
         "Deskripsikan bagaimana AI harus menyapa Anda, preferensi, latar belakang, atau gaya komunikasi Anda...",

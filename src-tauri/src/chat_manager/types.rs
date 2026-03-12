@@ -578,6 +578,7 @@ pub struct Persona {
     pub id: String,
     pub title: String,
     pub description: String,
+    pub nickname: Option<String>,
     #[serde(default)]
     pub is_default: bool,
     pub created_at: u64,

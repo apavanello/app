@@ -1386,6 +1386,9 @@ export const enMessages = {
       nameLabel: "PERSONA NAME",
       namePlaceholder: "e.g., Professional, Creative Writer, Student...",
       nameHint: "Give your persona a descriptive name",
+      nicknameLabel: "NICKNAME (OPTIONAL)",
+      nicknamePlaceholder: "e.g., Work Variant, RPG Mode...",
+      nicknameHint: "A private nickname to distinguish variants of this persona in your library",
       descriptionLabel: "DESCRIPTION",
       descriptionPlaceholder:
         "Describe how the AI should address you, your preferences, background, or communication style...",

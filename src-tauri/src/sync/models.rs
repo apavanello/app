@@ -33,6 +33,7 @@ pub struct Persona {
     pub id: String,
     pub title: String,
     pub description: String,
+    pub nickname: Option<String>,
     pub avatar_path: Option<String>,
     pub avatar_crop_x: Option<f64>,
     pub avatar_crop_y: Option<f64>,

@@ -304,7 +304,7 @@ fn fetch_global_core(conn: &DbConnection) -> Result<GlobalCoreData, String> {
 
     // Personas
     let mut stmt = conn
-        .prepare("SELECT id, title, description, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at FROM personas")
+        .prepare("SELECT id, title, description, nickname, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at FROM personas")
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     let personas: Vec<Persona> = stmt
         .query_map([], |r| {
@@ -312,13 +312,14 @@ fn fetch_global_core(conn: &DbConnection) -> Result<GlobalCoreData, String> {
                 id: r.get(0)?,
                 title: r.get(1)?,
                 description: r.get(2)?,
-                avatar_path: r.get(3)?,
-                avatar_crop_x: r.get(4)?,
-                avatar_crop_y: r.get(5)?,
-                avatar_crop_scale: r.get(6)?,
-                is_default: r.get(7)?,
-                created_at: r.get(8)?,
-                updated_at: r.get(9)?,
+                nickname: r.get(3)?,
+                avatar_path: r.get(4)?,
+                avatar_crop_x: r.get(5)?,
+                avatar_crop_y: r.get(6)?,
+                avatar_crop_scale: r.get(7)?,
+                is_default: r.get(8)?,
+                created_at: r.get(9)?,
+                updated_at: r.get(10)?,
             })
         })
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
@@ -1470,10 +1471,9 @@ fn apply_globals(conn: &mut DbConnection, data: &[u8]) -> Result<(), String> {
 
     // Personas
     for p in personas {
-        tx.execute(r#"INSERT OR REPLACE INTO personas (id, title, description, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"#,
-                   params![p.id, p.title, p.description, p.avatar_path, p.avatar_crop_x, p.avatar_crop_y, p.avatar_crop_scale, p.is_default, p.created_at, p.updated_at]).map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        tx.execute(r#"INSERT OR REPLACE INTO personas (id, title, description, nickname, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"#,
+                    params![p.id, p.title, p.description, p.nickname, p.avatar_path, p.avatar_crop_x, p.avatar_crop_y, p.avatar_crop_scale, p.is_default, p.created_at, p.updated_at]).map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     }
-
     // Models
     for m in models {
         tx.execute(r#"INSERT OR REPLACE INTO models (id, name, provider_id, provider_credential_id, provider_label, display_name, created_at, model_type, input_scopes, output_scopes, advanced_model_settings, prompt_template_id, system_prompt)

@@ -6,7 +6,7 @@ use super::db::{now_ms, open_db};
 #[tauri::command]
 pub fn personas_list(app: tauri::AppHandle) -> Result<String, String> {
     let conn = open_db(&app)?;
-    let mut stmt = conn.prepare("SELECT id, title, description, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at FROM personas ORDER BY created_at ASC").map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let mut stmt = conn.prepare("SELECT id, title, description, nickname, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at FROM personas ORDER BY created_at ASC").map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     let rows = stmt
         .query_map([], |r| {
             Ok((
@@ -14,12 +14,13 @@ pub fn personas_list(app: tauri::AppHandle) -> Result<String, String> {
                 r.get::<_, String>(1)?,
                 r.get::<_, String>(2)?,
                 r.get::<_, Option<String>>(3)?,
-                r.get::<_, Option<f64>>(4)?,
+                r.get::<_, Option<String>>(4)?,
                 r.get::<_, Option<f64>>(5)?,
                 r.get::<_, Option<f64>>(6)?,
-                r.get::<_, i64>(7)?,
+                r.get::<_, Option<f64>>(7)?,
                 r.get::<_, i64>(8)?,
                 r.get::<_, i64>(9)?,
+                r.get::<_, i64>(10)?,
             ))
         })
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -29,6 +30,7 @@ pub fn personas_list(app: tauri::AppHandle) -> Result<String, String> {
             id,
             title,
             description,
+            nickname,
             avatar_path,
             avatar_crop_x,
             avatar_crop_y,
@@ -44,6 +46,9 @@ pub fn personas_list(app: tauri::AppHandle) -> Result<String, String> {
             "description".into(),
             JsonValue::String(description.to_string()),
         );
+        if let Some(n) = nickname {
+            obj.insert("nickname".into(), JsonValue::String(n));
+        }
         if let Some(a) = avatar_path {
             obj.insert("avatarPath".into(), JsonValue::String(a));
         }
@@ -81,6 +86,10 @@ pub fn persona_upsert(app: tauri::AppHandle, persona_json: String) -> Result<Str
         .get("description")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "description is required".to_string())?;
+    let nickname = p
+        .get("nickname")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let avatar_path = p
         .get("avatarPath")
         .and_then(|v| v.as_str())
@@ -109,11 +118,12 @@ pub fn persona_upsert(app: tauri::AppHandle, persona_json: String) -> Result<Str
     let created_at = existing_created.unwrap_or(now);
 
     tx.execute(
-        r#"INSERT INTO personas (id, title, description, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        r#"INSERT INTO personas (id, title, description, nickname, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               title=excluded.title,
               description=excluded.description,
+              nickname=excluded.nickname,
               avatar_path=excluded.avatar_path,
               avatar_crop_x=excluded.avatar_crop_x,
               avatar_crop_y=excluded.avatar_crop_y,
@@ -124,6 +134,7 @@ pub fn persona_upsert(app: tauri::AppHandle, persona_json: String) -> Result<Str
             &id,
             title,
             description,
+            nickname,
             avatar_path,
             avatar_crop_x,
             avatar_crop_y,
@@ -151,6 +162,9 @@ pub fn persona_upsert(app: tauri::AppHandle, persona_json: String) -> Result<Str
         "description".into(),
         JsonValue::String(description.to_string()),
     );
+    if let Some(n) = nickname {
+        obj.insert("nickname".into(), JsonValue::String(n));
+    }
     if let Some(a) = avatar_path {
         obj.insert("avatarPath".into(), JsonValue::String(a));
     }
@@ -179,13 +193,14 @@ pub fn persona_delete(app: tauri::AppHandle, id: String) -> Result<(), String> {
 #[tauri::command]
 pub fn persona_default_get(app: tauri::AppHandle) -> Result<Option<String>, String> {
     let conn = open_db(&app)?;
-    let row = conn.query_row("SELECT id, title, description, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at FROM personas WHERE is_default = 1 LIMIT 1", [], |r| Ok((
-        r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, Option<f64>>(4)?, r.get::<_, Option<f64>>(5)?, r.get::<_, Option<f64>>(6)?, r.get::<_, i64>(7)?, r.get::<_, i64>(8)?, r.get::<_, i64>(9)?
+    let row = conn.query_row("SELECT id, title, description, nickname, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at FROM personas WHERE is_default = 1 LIMIT 1", [], |r| Ok((
+        r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, Option<String>>(4)?, r.get::<_, Option<f64>>(5)?, r.get::<_, Option<f64>>(6)?, r.get::<_, Option<f64>>(7)?, r.get::<_, i64>(8)?, r.get::<_, i64>(9)?, r.get::<_, i64>(10)?
     ))).optional().map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     if let Some((
         id,
         title,
         description,
+        nickname,
         avatar_path,
         avatar_crop_x,
         avatar_crop_y,
@@ -202,6 +217,9 @@ pub fn persona_default_get(app: tauri::AppHandle) -> Result<Option<String>, Stri
             "description".into(),
             JsonValue::String(description.to_string()),
         );
+        if let Some(n) = nickname {
+            obj.insert("nickname".into(), JsonValue::String(n));
+        }
         if let Some(a) = avatar_path {
             obj.insert("avatarPath".into(), JsonValue::String(a));
         }

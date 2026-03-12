@@ -1386,6 +1386,9 @@ export const viMessages: DeepPartialMessageTree<LocaleMessages> = {
       nameLabel: "TÊN PERSONA",
       namePlaceholder: "VD: Chuyên nghiệp, Nhà văn sáng tạo, Sinh viên...",
       nameHint: "Đặt tên mô tả cho persona của bạn",
+      nicknameLabel: "BIỆT DANH (TÙY CHỌN)",
+      nicknamePlaceholder: "VD: Biến thể công việc, Chế độ RPG...",
+      nicknameHint: "Một biệt danh riêng để phân biệt các biến thể của persona này trong thư viện của bạn",
       descriptionLabel: "MÔ TẢ",
       descriptionPlaceholder:
         "Mô tả cách AI nên xưng hô với bạn, sở thích, lý lịch, hoặc phong cách giao tiếp...",

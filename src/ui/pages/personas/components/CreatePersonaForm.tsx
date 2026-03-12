@@ -32,6 +32,7 @@ export function CreatePersonaForm({
   const {
     title,
     description,
+    nickname,
     avatarPath,
     avatarCrop,
     avatarRoundPath,
@@ -151,6 +152,38 @@ export function CreatePersonaForm({
           </div>
           <p className={cn(typography.bodySmall.size, "text-fg/40")}>
             {t("personas.edit.nameHint")}
+          </p>
+        </div>
+
+        {/* Nickname Input */}
+        <div className={spacing.field}>
+          <label
+            className={cn(
+              typography.label.size,
+              typography.label.weight,
+              typography.label.tracking,
+              "uppercase text-fg/70",
+            )}
+          >
+            {t("personas.edit.nicknameLabel")}
+          </label>
+          <div className="relative">
+            <input
+              value={nickname}
+              onChange={(e) => dispatch({ type: "set_nickname", value: e.target.value })}
+              placeholder={t("personas.edit.nicknamePlaceholder")}
+              className={cn(
+                "w-full border bg-surface-el/20 px-4 py-3.5 text-fg placeholder-fg/40 backdrop-blur-xl",
+                radius.md,
+                typography.body.size,
+                interactive.transition.default,
+                "focus:border-fg/30 focus:bg-surface-el/30 focus:outline-none",
+                nickname.trim() ? "border-accent/30 bg-accent/5" : "border-fg/10",
+              )}
+            />
+          </div>
+          <p className={cn(typography.bodySmall.size, "text-fg/40")}>
+            {t("personas.edit.nicknameHint")}
           </p>
         </div>
 

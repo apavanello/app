@@ -315,7 +315,7 @@ fn export_prompt_templates(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, Str
 fn export_personas(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
     let conn = open_db(app)?;
     let mut stmt = conn
-        .prepare("SELECT id, title, description, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at FROM personas")
+        .prepare("SELECT id, title, description, nickname, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at FROM personas")
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
     let rows = stmt
@@ -324,13 +324,14 @@ fn export_personas(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
                 "id": r.get::<_, String>(0)?,
                 "title": r.get::<_, String>(1)?,
                 "description": r.get::<_, String>(2)?,
-                "avatar_path": r.get::<_, Option<String>>(3)?,
-                "avatar_crop_x": r.get::<_, Option<f64>>(4)?,
-                "avatar_crop_y": r.get::<_, Option<f64>>(5)?,
-                "avatar_crop_scale": r.get::<_, Option<f64>>(6)?,
-                "is_default": r.get::<_, i64>(7)? != 0,
-                "created_at": r.get::<_, i64>(8)?,
-                "updated_at": r.get::<_, i64>(9)?,
+                "nickname": r.get::<_, Option<String>>(3)?,
+                "avatar_path": r.get::<_, Option<String>>(4)?,
+                "avatar_crop_x": r.get::<_, Option<f64>>(5)?,
+                "avatar_crop_y": r.get::<_, Option<f64>>(6)?,
+                "avatar_crop_scale": r.get::<_, Option<f64>>(7)?,
+                "is_default": r.get::<_, i64>(8)? != 0,
+                "created_at": r.get::<_, i64>(9)?,
+                "updated_at": r.get::<_, i64>(10)?,
             }))
         })
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -1643,12 +1644,13 @@ fn import_personas(app: &tauri::AppHandle, data: &JsonValue) -> Result<(), Strin
     if let Some(arr) = data.as_array() {
         for item in arr {
             conn.execute(
-                "INSERT INTO personas (id, title, description, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                "INSERT INTO personas (id, title, description, nickname, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 params![
                     item.get("id").and_then(|v| v.as_str()),
                     item.get("title").and_then(|v| v.as_str()),
                     item.get("description").and_then(|v| v.as_str()),
+                    item.get("nickname").and_then(|v| v.as_str()),
                     item.get("avatar_path").and_then(|v| v.as_str()),
                     item.get("avatar_crop_x").and_then(|v| v.as_f64()),
                     item.get("avatar_crop_y").and_then(|v| v.as_f64()),

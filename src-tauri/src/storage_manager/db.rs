@@ -410,6 +410,7 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
           id TEXT PRIMARY KEY,
           title TEXT NOT NULL,
           description TEXT NOT NULL,
+          nickname TEXT,
           avatar_path TEXT,
           avatar_crop_x REAL,
           avatar_crop_y REAL,
@@ -1006,6 +1007,7 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
     let mut has_persona_avatar_crop_x = false;
     let mut has_persona_avatar_crop_y = false;
     let mut has_persona_avatar_crop_scale = false;
+    let mut has_persona_nickname = false;
     let mut rows_personas = stmt_personas
         .query([])
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -1020,6 +1022,7 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
             "avatar_crop_x" => has_persona_avatar_crop_x = true,
             "avatar_crop_y" => has_persona_avatar_crop_y = true,
             "avatar_crop_scale" => has_persona_avatar_crop_scale = true,
+            "nickname" => has_persona_nickname = true,
             _ => {}
         }
     }
@@ -1031,6 +1034,9 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
     }
     if !has_persona_avatar_crop_scale {
         let _ = conn.execute("ALTER TABLE personas ADD COLUMN avatar_crop_scale REAL", []);
+    }
+    if !has_persona_nickname {
+        let _ = conn.execute("ALTER TABLE personas ADD COLUMN nickname TEXT", []);
     }
 
     // Migrations: add title to lorebook_entries if missing

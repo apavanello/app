@@ -1411,6 +1411,9 @@ export const deMessages: DeepPartialMessageTree<LocaleMessages> = {
       nameLabel: "PERSONA-NAME",
       namePlaceholder: "z.B. Professionell, Kreativer Schreiber, Student...",
       nameHint: "Gib deiner Persona einen beschreibenden Namen",
+      nicknameLabel: "SPITZNAME (OPTIONAL)",
+      nicknamePlaceholder: "z. B. Arbeitsvariante, RPG-Modus...",
+      nicknameHint: "Ein privater Spitzname, um Varianten dieser Persona in Ihrer Bibliothek zu unterscheiden",
       descriptionLabel: "BESCHREIBUNG",
       descriptionPlaceholder:
         "Beschreibe, wie die KI dich ansprechen soll, deine Vorlieben, Hintergrund oder Kommunikationsstil...",

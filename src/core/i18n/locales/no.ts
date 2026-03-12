@@ -1394,6 +1394,9 @@ export const noMessages: DeepPartialMessageTree<LocaleMessages> = {
       nameLabel: "PERSONANAVN",
       namePlaceholder: "f.eks. Profesjonell, Kreativ skribent, Student...",
       nameHint: "Gi personaen din et beskrivende navn",
+      nicknameLabel: "KALLENAVN (VALGFRITT)",
+      nicknamePlaceholder: "f.eks. Jobbvariant, Rollespillmodus...",
+      nicknameHint: "Et privat kallenavn for å skille varianter av denne personaen i biblioteket ditt",
       descriptionLabel: "BESKRIVELSE",
       descriptionPlaceholder:
         "Beskriv hvordan AI-en skal tiltale deg, dine preferanser, bakgrunn eller kommunikasjonsstil...",

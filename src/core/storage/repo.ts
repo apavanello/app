@@ -913,6 +913,7 @@ export async function savePersona(
     id: p.id ?? globalThis.crypto?.randomUUID?.() ?? uuidv4(),
     title: p.title,
     description: p.description,
+    nickname: p.nickname,
     avatarPath: p.avatarPath,
     avatarCrop: p.avatarCrop,
     isDefault: p.isDefault ?? false,

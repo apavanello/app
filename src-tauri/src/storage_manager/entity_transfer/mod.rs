@@ -141,6 +141,7 @@ pub struct PersonaExportPackage {
 pub struct PersonaExportData {
     pub title: String,
     pub description: String,
+    pub nickname: Option<String>,
     pub is_default: Option<bool>,
     pub avatar_crop: Option<AvatarCrop>,
 }
@@ -559,6 +560,7 @@ fn parse_uec_persona(value: &JsonValue) -> Result<PersonaExportPackage, String> 
         .and_then(|value| value.as_str())
         .unwrap_or_default()
         .to_string();
+    let nickname = payload.get("nickname").and_then(|v| v.as_str()).map(|s| s.to_string());
     let is_default = payload.get("isDefault").and_then(|v| v.as_bool());
     let avatar_data = asset_locator_to_string(payload.get("avatar"));
     let avatar_crop = parse_avatar_crop(
@@ -573,6 +575,7 @@ fn parse_uec_persona(value: &JsonValue) -> Result<PersonaExportPackage, String> 
         persona: PersonaExportData {
             title,
             description,
+            nickname,
             is_default,
             avatar_crop,
         },
@@ -2559,9 +2562,10 @@ pub fn persona_export(app: tauri::AppHandle, persona_id: String) -> Result<Strin
     let conn = open_db(&app)?;
 
     // Read persona data
-    let (title, description, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at): (
+    let (title, description, nickname, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at): (
         String,
         String,
+        Option<String>,
         Option<String>,
         Option<f64>,
         Option<f64>,
@@ -2571,9 +2575,9 @@ pub fn persona_export(app: tauri::AppHandle, persona_id: String) -> Result<Strin
         i64,
     ) = conn
         .query_row(
-            "SELECT title, description, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at FROM personas WHERE id = ?",
+            "SELECT title, description, nickname, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at FROM personas WHERE id = ?",
             params![&persona_id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?)),
         )
         .map_err(|e| crate::utils::err_msg(module_path!(), line!(), format!("Persona not found: {}", e)))?;
 
@@ -2588,6 +2592,9 @@ pub fn persona_export(app: tauri::AppHandle, persona_id: String) -> Result<Strin
     payload.insert("id".into(), JsonValue::String(persona_id.clone()));
     payload.insert("title".into(), JsonValue::String(title));
     payload.insert("description".into(), JsonValue::String(description));
+    if let Some(n) = nickname {
+        payload.insert("nickname".into(), JsonValue::String(n));
+    }
     payload.insert("isDefault".into(), JsonValue::Bool(is_default != 0));
     payload.insert("createdAt".into(), JsonValue::from(created_at));
     payload.insert("updatedAt".into(), JsonValue::from(updated_at));
@@ -2729,12 +2736,13 @@ pub fn persona_import(app: tauri::AppHandle, import_json: String) -> Result<Stri
     }
 
     tx.execute(
-        r#"INSERT INTO personas (id, title, description, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+        r#"INSERT INTO personas (id, title, description, nickname, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, is_default, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
         params![
             &new_persona_id,
             &package.persona.title,
             &package.persona.description,
+            &package.persona.nickname,
             avatar_path,
             avatar_crop_x,
             avatar_crop_y,
