@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   AreaChart,
@@ -26,74 +27,23 @@ import {
   Activity,
   Clock,
   Filter,
-  X,
   ChevronRight,
   Calendar,
 } from "lucide-react";
 import { BottomMenu } from "../../components";
 import { useI18n } from "../../../core/i18n/context";
+import { ActivityItem, formatCompactNumber, formatCurrency } from "./UsageActivityShared";
+import { typography, colors, components, cn, animations, radius } from "../../design-tokens";
 
 // ============================================================================
 // Utilities
 // ============================================================================
-
-function formatCurrency(value: number): string {
-  if (value === 0) return "$0.00";
-  if (value < 0.01) return `$${value.toFixed(4)}`;
-  if (value < 1) return `$${value.toFixed(3)}`;
-  return `$${value.toFixed(2)}`;
-}
 
 function formatNumber(value: number): string {
   if (value === 0) return "0";
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
   return value.toLocaleString();
-}
-
-function formatCompactNumber(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
-  return value.toString();
-}
-
-function getRelativeTime(timestamp: number): string {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7) return `${days}d ago`;
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function getOperationColor(type: string): string {
-  const colors: Record<string, string> = {
-    chat: "var(--color-info)",
-    regenerate: "var(--color-secondary)",
-    continue: "#22d3ee",
-    summary: "var(--color-warning)",
-    memory_manager: "var(--color-accent)",
-  };
-  return colors[type.toLowerCase()] || "#94a3b8";
-}
-
-function getOperationLabel(type: string): string {
-  const labels: Record<string, string> = {
-    chat: "Chat",
-    regenerate: "Regen",
-    continue: "Continue",
-    summary: "Summary",
-    memory_manager: "Memory",
-  };
-  return labels[type.toLowerCase()] || type;
 }
 
 function formatDurationMs(durationMs: number): string {
@@ -145,7 +95,6 @@ function getDateRange(preset: DatePreset): { start: Date; end: Date } {
       start.setFullYear(start.getFullYear() - 10);
       break;
     case "custom":
-      // Custom range will be handled separately
       break;
   }
 
@@ -160,15 +109,25 @@ const ChartTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
 
   return (
-    <div className="max-w-[70vw] rounded-lg border border-fg/15 bg-surface/70 backdrop-blur-md px-2.5 py-2 shadow-xl">
-      <p className="text-[10px] font-medium text-fg/60 mb-1">{label}</p>
-      {payload.map((p: any, i: number) => (
-        <div key={i} className="flex items-center gap-1.5 text-[11px]">
-          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color }} />
-          <span className="text-fg/60">{p.name}:</span>
-          <span className="text-fg font-medium">{formatNumber(p.value)}</span>
-        </div>
-      ))}
+    <div className={cn(
+      "max-w-[70vw] px-3 py-2.5 shadow-xl",
+      components.card.base,
+      colors.glass.default
+    )}>
+      <p className={cn(typography.overline.size, "text-fg/50 mb-2")}>{label}</p>
+      <div className="space-y-1.5">
+        {payload.map((p: any, i: number) => (
+          <div key={i} className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color }} />
+              <span className={cn(typography.caption.size, "text-fg/60")}>{p.name}</span>
+            </div>
+            <span className={cn(typography.caption.size, typography.h3.weight, "text-fg")}>
+              {formatNumber(p.value)}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
@@ -177,13 +136,21 @@ const AppTimeTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
 
   return (
-    <div className="max-w-[70vw] rounded-lg border border-fg/15 bg-surface/70 backdrop-blur-md px-2.5 py-2 shadow-xl">
-      <p className="text-[10px] font-medium text-fg/60 mb-1">{label}</p>
+    <div className={cn(
+      "max-w-[70vw] px-3 py-2.5 shadow-xl",
+      components.card.base,
+      colors.glass.default
+    )}>
+      <p className={cn(typography.overline.size, "text-fg/50 mb-2")}>{label}</p>
       {payload.map((p: any, i: number) => (
-        <div key={i} className="flex items-center gap-1.5 text-[11px]">
-          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color }} />
-          <span className="text-fg/60">{p.name}:</span>
-          <span className="text-fg font-medium">{formatDurationMs(p.value)}</span>
+        <div key={i} className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color }} />
+            <span className={cn(typography.caption.size, "text-fg/60")}>{p.name}</span>
+          </div>
+          <span className={cn(typography.caption.size, typography.h3.weight, "text-fg")}>
+            {formatDurationMs(p.value)}
+          </span>
         </div>
       ))}
     </div>
@@ -211,79 +178,66 @@ function StatCard({
 }) {
   return (
     <div
-      className={`rounded-2xl border p-4 ${
-        highlight
-          ? "border-accent/30 bg-linear-to-br from-accent/20 via-accent/10 to-transparent"
-          : "border-fg/10 bg-fg/5"
-      }`}
+      className={cn(
+        "relative overflow-hidden p-4",
+        components.card.base,
+        highlight 
+          ? "bg-accent/10 border-accent/25" 
+          : "bg-fg/5 border-fg/10"
+      )}
     >
-      <div className="flex items-center gap-2 mb-2">
-        <div className={`p-1.5 rounded-lg ${highlight ? "bg-accent/20" : "bg-fg/5"}`}>
-          <Icon className={`h-3.5 w-3.5 ${highlight ? "text-accent" : "text-fg/50"}`} />
-        </div>
-        <span className="text-[11px] font-medium text-fg/50 uppercase tracking-wide">{label}</span>
-      </div>
-      <div className="flex items-end justify-between">
-        <div>
-          <p className={`text-2xl font-bold ${highlight ? "text-accent/90" : "text-fg"}`}>
-            {value}
-          </p>
-          {subValue && <p className="text-[11px] text-fg/40 mt-0.5">{subValue}</p>}
-        </div>
-        {trend && trend.value > 0 && (
-          <div
-            className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-              trend.isUp ? "bg-accent/15 text-accent" : "bg-danger/15 text-danger"
-            }`}
-          >
-            {trend.isUp ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-            {trend.value.toFixed(0)}%
+      {highlight && (
+        <div className="absolute top-0 right-0 -mr-8 -mt-8 h-24 w-24 rounded-full bg-accent/5 blur-2xl" />
+      )}
+      
+      <div className="relative z-10">
+        <div className="flex items-center gap-2 mb-3">
+          <div className={cn(
+            "p-1.5 rounded-lg",
+            highlight ? "bg-accent/20 text-accent" : "bg-fg/5 text-fg/40"
+          )}>
+            <Icon className="h-3.5 w-3.5" />
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
-// Activity Item
-// ============================================================================
-
-function ActivityItem({ request }: { request: RequestUsage }) {
-  return (
-    <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-fg/5 transition-colors">
-      <div
-        className="h-8 w-8 rounded-full flex items-center justify-center shrink-0"
-        style={{ backgroundColor: `${getOperationColor(request.operationType)}20` }}
-      >
-        <Zap className="h-3.5 w-3.5" style={{ color: getOperationColor(request.operationType) }} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-fg truncate">
-            {request.characterName || "Unknown"}
-          </span>
-          <span
-            className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
-            style={{
-              backgroundColor: `${getOperationColor(request.operationType)}20`,
-              color: getOperationColor(request.operationType),
-            }}
-          >
-            {getOperationLabel(request.operationType)}
+          <span className={cn(
+            typography.overline.size,
+            typography.overline.weight,
+            typography.overline.tracking,
+            typography.overline.transform,
+            "text-fg/40"
+          )}>
+            {label}
           </span>
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-fg/40">
-          <span>{formatCompactNumber(request.totalTokens || 0)} tokens</span>
-          <span>·</span>
-          <span>{getRelativeTime(request.timestamp)}</span>
+        
+        <div className="flex items-end justify-between gap-2">
+          <div className="min-w-0">
+            <p className={cn(
+              typography.display.size,
+              typography.display.weight,
+              typography.display.tracking,
+              highlight ? "text-accent" : "text-fg"
+            )}>
+              {value}
+            </p>
+            {subValue && (
+              <p className={cn(typography.caption.size, "text-fg/30 mt-0.5 truncate")}>
+                {subValue}
+              </p>
+            )}
+          </div>
+          
+          {trend && trend.value > 0 && (
+            <div
+              className={cn(
+                "flex items-center gap-0.5 rounded-full px-2 py-0.5 mb-1 text-[10px] font-bold",
+                trend.isUp ? "bg-accent/15 text-accent" : "bg-danger/15 text-danger"
+              )}
+            >
+              {trend.isUp ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+              {trend.value.toFixed(0)}%
+            </div>
+          )}
         </div>
-      </div>
-      <div className="text-right shrink-0">
-        <p className="text-sm font-medium text-accent">
-          {formatCurrency(request.cost?.totalCost || 0)}
-        </p>
-        <p className="text-[10px] text-fg/30">{request.modelName}</p>
       </div>
     </div>
   );
@@ -295,6 +249,7 @@ function ActivityItem({ request }: { request: RequestUsage }) {
 
 export function UsagePage() {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const { queryRecords, exportCSV, saveCSV, getAppActiveUsage } = useUsageTracking();
   const [appActiveUsage, setAppActiveUsage] = useState<AppActiveUsageSummary>({
     totalMs: 0,
@@ -307,7 +262,7 @@ export function UsagePage() {
   // Dashboard state
   const [datePreset, setDatePreset] = useState<DatePreset>("month");
   const [records, setRecords] = useState<RequestUsage[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [showAllActivity, setShowAllActivity] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -413,7 +368,6 @@ export function UsagePage() {
         charMap.set(r.characterId, existing);
       }
       const recordDate = new Date(r.timestamp);
-      // Use date string as key (YYYY-MM-DD format ensures uniqueness)
       const dateKey = recordDate.toISOString().split("T")[0];
       const dayData = dailyMap.get(dateKey) || { input: 0, output: 0, cost: 0, date: recordDate };
       dayData.input += r.promptTokens || 0;
@@ -430,7 +384,6 @@ export function UsagePage() {
       .map(([id, data]) => ({ id, ...data }))
       .sort((a, b) => b.tokens - a.tokens);
 
-    // Determine how many days to show based on the date preset
     const daysToShow =
       datePreset === "today"
         ? 1
@@ -438,11 +391,7 @@ export function UsagePage() {
           ? 7
           : datePreset === "month"
             ? 30
-            : datePreset === "all"
-              ? undefined // Show all data
-              : datePreset === "custom"
-                ? undefined // Show all data for custom range
-                : 14; // Default fallback
+            : undefined;
 
     const sortedEntries = Array.from(dailyMap.entries()).sort(
       (a, b) => a[1].date.getTime() - b[1].date.getTime(),
@@ -494,8 +443,6 @@ export function UsagePage() {
     };
     const todayMs = sumPreviousDays(0, 1);
     const yesterdayMs = sumPreviousDays(1, 1);
-    const avg3Ms = sumPreviousDays(1, 3) / 3;
-    const avg7Ms = sumPreviousDays(1, 7) / 7;
     const avg30Ms = sumPreviousDays(1, 30) / 30;
 
     const sumRangeFromDate = (start: Date, days: number) => {
@@ -533,6 +480,7 @@ export function UsagePage() {
             : appTimePreset === "custom"
               ? customRangeKeys.length
               : undefined;
+    
     const allDayKeysSorted = Object.keys(byDay).sort();
     const chartKeys =
       daysToShow === undefined
@@ -573,8 +521,6 @@ export function UsagePage() {
     return {
       todayMs,
       yesterdayMs,
-      avg3Ms,
-      avg7Ms,
       avg30Ms,
       rangeTotalMs,
       selectedDays,
@@ -586,7 +532,6 @@ export function UsagePage() {
     };
   }, [appActiveUsage, appTimePreset, customStartDate, customEndDate]);
 
-  // Export handler
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -617,139 +562,174 @@ export function UsagePage() {
   const activeFilterCount = [selectedModel, selectedCharacter].filter(Boolean).length;
 
   return (
-    <div className="min-h-screen bg-surface pb-24">
-      {/* Filters Bottom Sheet */}
+    <div className="min-h-screen bg-surface pb-32">
       <BottomMenu
         isOpen={showFilters}
         onClose={() => setShowFilters(false)}
         title="Filters"
         includeExitIcon={false}
       >
-        <div className="space-y-4 pb-4">
+        <div className="space-y-6 pb-8">
           <div>
-            <label className="text-xs font-medium text-fg/60 uppercase tracking-wide mb-2 block">
+            <label className={cn(
+              typography.overline.size,
+              typography.overline.weight,
+              typography.overline.tracking,
+              "text-fg/40 ml-1 mb-3 block"
+            )}>
               Model
             </label>
-            <div className="space-y-1 max-h-48 overflow-y-auto">
-              {modelOptions.slice(0, 8).map((m) => (
+            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+              {modelOptions.slice(0, 12).map((m) => (
                 <button
                   key={m.id}
                   onClick={() => setSelectedModel(selectedModel === m.id ? null : m.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition ${
+                  className={cn(
+                    "w-full flex items-center justify-between px-3.5 py-3 transition-all",
+                    components.listItem.base,
                     selectedModel === m.id
-                      ? "bg-accent/20 text-accent/90"
+                      ? "bg-accent/15 border-accent/30 text-accent"
                       : "bg-fg/5 text-fg/70 hover:bg-fg/10"
-                  }`}
+                  )}
                 >
-                  <span className="truncate">{m.name}</span>
-                  <span className="text-xs text-fg/40">{formatCompactNumber(m.tokens)}</span>
+                  <span className={cn(typography.body.size, "truncate")}>{m.name}</span>
+                  <span className={cn(typography.caption.size, "text-fg/40")}>{formatCompactNumber(m.tokens)}</span>
                 </button>
               ))}
             </div>
           </div>
 
           <div>
-            <label className="text-xs font-medium text-fg/60 uppercase tracking-wide mb-2 block">
+            <label className={cn(
+              typography.overline.size,
+              typography.overline.weight,
+              typography.overline.tracking,
+              "text-fg/40 ml-1 mb-3 block"
+            )}>
               Character
             </label>
-            <div className="space-y-1 max-h-48 overflow-y-auto">
-              {characterOptions.slice(0, 8).map((c) => (
+            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+              {characterOptions.slice(0, 12).map((c) => (
                 <button
                   key={c.id}
                   onClick={() => setSelectedCharacter(selectedCharacter === c.id ? null : c.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition ${
+                  className={cn(
+                    "w-full flex items-center justify-between px-3.5 py-3 transition-all",
+                    components.listItem.base,
                     selectedCharacter === c.id
-                      ? "bg-accent/20 text-accent/90"
+                      ? "bg-accent/15 border-accent/30 text-accent"
                       : "bg-fg/5 text-fg/70 hover:bg-fg/10"
-                  }`}
+                  )}
                 >
-                  <span className="truncate">{c.name}</span>
-                  <span className="text-xs text-fg/40">{formatCompactNumber(c.tokens)}</span>
+                  <span className={cn(typography.body.size, "truncate")}>{c.name}</span>
+                  <span className={cn(typography.caption.size, "text-fg/40")}>{formatCompactNumber(c.tokens)}</span>
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="flex gap-2 pt-2">
+          <div className="flex gap-3 pt-2">
             <button
               onClick={() => {
                 setSelectedModel(null);
                 setSelectedCharacter(null);
               }}
-              className="flex-1 py-2.5 rounded-xl border border-fg/10 text-fg/60 text-sm font-medium hover:bg-fg/5 transition"
+              className={cn(
+                "flex-1 py-3 border border-fg/10 text-fg/60 font-semibold transition-all",
+                components.button.primary,
+                "hover:bg-fg/5"
+              )}
             >
               Clear All
             </button>
             <button
               onClick={() => setShowFilters(false)}
-              className="flex-1 py-2.5 rounded-xl bg-accent/20 border border-accent/30 text-accent/90 text-sm font-medium hover:bg-accent/30 transition"
+              className={cn(
+                "flex-1 py-3 bg-accent text-black font-bold transition-all",
+                components.button.primary,
+                "hover:brightness-110 shadow-lg shadow-accent/20"
+              )}
             >
-              Apply
+              Apply Filters
             </button>
           </div>
         </div>
       </BottomMenu>
 
-      {/* All Activity Bottom Sheet */}
       <BottomMenu
         isOpen={showAllActivity}
         onClose={() => setShowAllActivity(false)}
         title="Recent Activity"
         includeExitIcon={false}
       >
-        <div className="space-y-1 pb-4 max-h-[60vh] overflow-y-auto">
+        <div className="space-y-0.5 pb-8 max-h-[65vh] overflow-y-auto pr-1">
           {filteredRecords.slice(0, 50).map((r) => (
             <ActivityItem key={r.id} request={r} />
           ))}
           {filteredRecords.length === 0 && (
-            <p className="text-center text-fg/40 py-8 text-sm">{t("common.labels.none")}</p>
+            <div className="py-20 text-center">
+               <Calendar className="h-10 w-10 text-fg/10 mx-auto mb-4" />
+               <p className={cn(typography.body.size, "text-fg/40")}>{t("common.labels.none")}</p>
+            </div>
           )}
         </div>
       </BottomMenu>
 
-      {/* Custom Date Range Bottom Sheet */}
       <BottomMenu
         isOpen={showCustomDatePicker}
         onClose={() => setShowCustomDatePicker(false)}
-        title="Custom Date Range"
+        title="Custom Range"
         includeExitIcon={false}
       >
-        <div className="space-y-4 pb-4">
-          <div>
-            <label className="block text-xs font-medium text-fg/60 mb-2">Start Date</label>
-            <input
-              type="date"
-              value={customStartDate.toISOString().split("T")[0]}
-              onChange={(e) => {
-                const newDate = new Date(e.target.value);
-                newDate.setHours(0, 0, 0, 0);
-                setCustomStartDate(newDate);
-              }}
-              max={customEndDate.toISOString().split("T")[0]}
-              className="w-full px-3 py-2.5 rounded-xl bg-fg/5 border border-fg/10 text-fg text-sm focus:outline-none focus:border-accent/50 focus:bg-fg/10 transition"
-            />
+        <div className="space-y-6 pb-8">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={cn(typography.overline.size, "text-fg/40 mb-2 block")}>Start Date</label>
+              <input
+                type="date"
+                value={customStartDate.toISOString().split("T")[0]}
+                onChange={(e) => {
+                  const newDate = new Date(e.target.value);
+                  newDate.setHours(0, 0, 0, 0);
+                  setCustomStartDate(newDate);
+                }}
+                max={customEndDate.toISOString().split("T")[0]}
+                className={cn(
+                  "w-full bg-fg/5 border border-fg/10 text-fg focus:border-accent/40 focus:bg-fg/10 transition-all",
+                  components.input.base,
+                  components.input.sizes.md
+                )}
+              />
+            </div>
+            <div>
+              <label className={cn(typography.overline.size, "text-fg/40 mb-2 block")}>End Date</label>
+              <input
+                type="date"
+                value={customEndDate.toISOString().split("T")[0]}
+                onChange={(e) => {
+                  const newDate = new Date(e.target.value);
+                  newDate.setHours(23, 59, 59, 999);
+                  setCustomEndDate(newDate);
+                }}
+                min={customStartDate.toISOString().split("T")[0]}
+                max={new Date().toISOString().split("T")[0]}
+                className={cn(
+                  "w-full bg-fg/5 border border-fg/10 text-fg focus:border-accent/40 focus:bg-fg/10 transition-all",
+                  components.input.base,
+                  components.input.sizes.md
+                )}
+              />
+            </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-fg/60 mb-2">End Date</label>
-            <input
-              type="date"
-              value={customEndDate.toISOString().split("T")[0]}
-              onChange={(e) => {
-                const newDate = new Date(e.target.value);
-                newDate.setHours(23, 59, 59, 999);
-                setCustomEndDate(newDate);
-              }}
-              min={customStartDate.toISOString().split("T")[0]}
-              max={new Date().toISOString().split("T")[0]}
-              className="w-full px-3 py-2.5 rounded-xl bg-fg/5 border border-fg/10 text-fg text-sm focus:outline-none focus:border-accent/50 focus:bg-fg/10 transition"
-            />
-          </div>
-
-          <div className="flex gap-2 pt-2">
+          <div className="flex gap-3 pt-2">
             <button
               onClick={() => setShowCustomDatePicker(false)}
-              className="flex-1 py-2.5 rounded-xl border border-fg/10 text-fg/60 text-sm font-medium hover:bg-fg/5 transition"
+              className={cn(
+                "flex-1 py-3 border border-fg/10 text-fg/60 font-semibold transition-all",
+                components.button.primary,
+                "hover:bg-fg/5"
+              )}
             >
               Cancel
             </button>
@@ -762,134 +742,127 @@ export function UsagePage() {
                 }
                 setShowCustomDatePicker(false);
               }}
-              className="flex-1 py-2.5 rounded-xl bg-accent/20 border border-accent/30 text-accent/90 text-sm font-medium hover:bg-accent/30 transition"
+              className={cn(
+                "flex-1 py-3 bg-accent text-black font-bold transition-all",
+                components.button.primary,
+                "hover:brightness-110"
+              )}
             >
-              Apply
+              Apply Range
             </button>
           </div>
         </div>
       </BottomMenu>
 
-      <div className="max-w-5xl mx-auto px-4 py-4">
-        {/* View Mode Toggle */}
-        <div className="flex items-center gap-2 mb-4">
-          <div className="flex-1 flex items-center gap-1 p-1 rounded-xl bg-fg/5 border border-fg/10">
-            <button
-              onClick={() => setViewMode("dashboard")}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                viewMode === "dashboard" ? "bg-fg/10 text-fg" : "text-fg/50 hover:text-fg/70"
-              }`}
-            >
-              <Activity className="h-3.5 w-3.5" />
-              Dashboard
-            </button>
-            <button
-              onClick={() => setViewMode("appTime")}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                viewMode === "appTime" ? "bg-fg/10 text-fg" : "text-fg/50 hover:text-fg/70"
-              }`}
-            >
-              <Clock className="h-3.5 w-3.5" />
-              App Time
-            </button>
-          </div>
-        </div>
-
-        {/* ================================================================== */}
-        {/* DASHBOARD VIEW */}
-        {/* ================================================================== */}
-        {viewMode === "dashboard" && (
-          <>
-            {/* Header Row */}
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
-              <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-fg/5 border border-fg/10">
-                {[
-                  { key: "today", label: "Today" },
-                  { key: "week", label: "7 Days" },
-                  { key: "month", label: "30 Days" },
-                  { key: "all", label: "All" },
-                ].map(({ key, label }) => (
-                  <button
-                    key={key}
-                    onClick={() => setDatePreset(key as DatePreset)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                      datePreset === key ? "bg-fg/10 text-fg" : "text-fg/50 hover:text-fg/70"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-                <button
-                  onClick={() => setShowCustomDatePicker(true)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    datePreset === "custom" ? "bg-fg/10 text-fg" : "text-fg/50 hover:text-fg/70"
-                  }`}
-                >
-                  Custom
-                </button>
-              </div>
-
-              <div className="flex w-full items-center gap-2 sm:w-auto sm:justify-end">
-                <button
-                  onClick={() => setShowFilters(true)}
-                  className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                    activeFilterCount > 0
-                      ? "bg-accent/20 text-accent/90 border border-accent/30"
-                      : "bg-fg/5 text-fg/60 border border-fg/10 hover:bg-fg/10"
-                  }`}
-                >
-                  <Filter className="h-3.5 w-3.5" />
-                  {activeFilterCount > 0 ? `${activeFilterCount}` : "Filter"}
-                </button>
-                <button
-                  onClick={handleExport}
-                  disabled={exporting || records.length === 0}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-fg/5 border border-fg/10 text-fg/60 text-xs font-medium hover:bg-fg/10 transition disabled:opacity-50"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                </button>
-              </div>
+      <div className="max-w-4xl mx-auto px-4 py-6">
+        <div className="flex flex-col gap-6">
+          <div className="flex items-center justify-center">
+            <div className={cn(
+              "p-1 flex items-center gap-1 bg-fg/5 border border-fg/10",
+              radius.lg
+            )}>
+              <button
+                onClick={() => setViewMode("dashboard")}
+                className={cn(
+                  "flex items-center gap-2 px-6 py-2 rounded-lg transition-all duration-300",
+                  typography.label.size,
+                  typography.label.weight,
+                  viewMode === "dashboard" 
+                    ? "bg-fg text-surface shadow-lg" 
+                    : "text-fg/40 hover:text-fg/70 hover:bg-fg/5"
+                )}
+              >
+                <Activity className="h-3.5 w-3.5" />
+                DASHBOARD
+              </button>
+              <button
+                onClick={() => setViewMode("appTime")}
+                className={cn(
+                  "flex items-center gap-2 px-6 py-2 rounded-lg transition-all duration-300",
+                  typography.label.size,
+                  typography.label.weight,
+                  viewMode === "appTime" 
+                    ? "bg-fg text-surface shadow-lg" 
+                    : "text-fg/40 hover:text-fg/70 hover:bg-fg/5"
+                )}
+              >
+                <Clock className="h-3.5 w-3.5" />
+                APP TIME
+              </button>
             </div>
+          </div>
 
-            {/* Active Filters */}
-            <AnimatePresence>
-              {activeFilterCount > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="flex items-center gap-2 mb-4 overflow-hidden"
-                >
-                  {selectedModel && (
-                    <button
-                      onClick={() => setSelectedModel(null)}
-                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/15 border border-accent/30 text-accent/90 text-xs"
-                    >
-                      {modelOptions.find((m) => m.id === selectedModel)?.name}
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                  {selectedCharacter && (
-                    <button
-                      onClick={() => setSelectedCharacter(null)}
-                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/15 border border-accent/30 text-accent/90 text-xs"
-                    >
-                      {characterOptions.find((c) => c.id === selectedCharacter)?.name}
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
+          <AnimatePresence mode="wait">
+            {viewMode === "dashboard" ? (
+              <motion.div
+                key="dashboard"
+                {...animations.fadeIn}
+                className="space-y-6"
+              >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className={cn(
+                    "flex flex-wrap items-center gap-1.5 p-1.5 bg-fg/5 border border-fg/10",
+                    radius.lg
+                  )}>
+                    {[
+                      { key: "today", label: "Today" },
+                      { key: "week", label: "7 Days" },
+                      { key: "month", label: "30 Days" },
+                      { key: "all", label: "All" },
+                      { key: "custom", label: "Custom" },
+                    ].map(({ key, label }) => (
+                      <button
+                        key={key}
+                        onClick={() => {
+                          if (key === "custom") {
+                            setShowCustomDatePicker(true);
+                            return;
+                          }
+                          setDatePreset(key as DatePreset);
+                        }}
+                        className={cn(
+                          "px-4 py-1.5 rounded-lg transition-all duration-200",
+                          typography.caption.size,
+                          typography.caption.weight,
+                          datePreset === key 
+                            ? "bg-fg/10 text-fg shadow-sm" 
+                            : "text-fg/40 hover:text-fg/70 hover:bg-fg/5"
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
 
-            {loading ? (
-              <div className="flex items-center justify-center py-20">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-fg/20 border-t-accent" />
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* Stats Row */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowFilters(true)}
+                      className={cn(
+                        "flex items-center gap-2 px-4 py-2 border transition-all",
+                        components.button.primary,
+                        activeFilterCount > 0
+                          ? "bg-accent/15 border-accent/40 text-accent shadow-sm"
+                          : "bg-fg/5 border-fg/10 text-fg/50 hover:bg-fg/10"
+                      )}
+                    >
+                      <Filter className="h-3.5 w-3.5" />
+                      <span className={typography.caption.size}>{activeFilterCount > 0 ? `${activeFilterCount} Filters` : "Filters"}</span>
+                    </button>
+                    <button
+                      onClick={handleExport}
+                      disabled={exporting || records.length === 0}
+                      className={cn(
+                        "flex items-center justify-center p-2 border transition-all",
+                        components.button.primary,
+                        "bg-fg/5 border-fg/10 text-fg/50 hover:bg-fg/10 disabled:opacity-20"
+                      )}
+                    >
+                      <Download className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <StatCard
                     icon={DollarSign}
                     label="Total Cost"
@@ -911,76 +884,75 @@ export function UsagePage() {
                     icon={Clock}
                     label="Period"
                     value={
-                      datePreset === "today"
-                        ? "Today"
-                        : datePreset === "week"
-                          ? "7 Days"
-                          : datePreset === "month"
-                            ? "30 Days"
-                            : datePreset === "custom"
-                              ? `${customStartDate.toLocaleDateString()} - ${customEndDate.toLocaleDateString()}`
-                              : "All Time"
+                      datePreset === "today" ? "Today" : 
+                      datePreset === "week" ? "Last 7d" : 
+                      datePreset === "month" ? "Last 30d" : 
+                      datePreset === "custom" ? "Custom" : "All Time"
                     }
                     subValue={`${filteredRecords.length} records`}
                   />
                 </div>
 
-                {/* Chart */}
                 {chartData.length > 1 && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="rounded-2xl border border-fg/10 bg-fg/5 p-4"
-                  >
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-semibold text-fg">Usage Trend</h3>
-                      <div className="flex items-center gap-3 text-[11px]">
-                        <div className="flex items-center gap-1.5">
+                  <div className={cn(
+                    "p-6",
+                    components.card.base,
+                    "bg-fg/5 border-fg/10"
+                  )}>
+                    <div className="flex items-center justify-between mb-8">
+                      <div>
+                        <h3 className={cn(typography.h3.size, typography.h3.weight, "text-fg")}>Usage Trend</h3>
+                        <p className={cn(typography.caption.size, "text-fg/40 mt-0.5")}>Token consumption over time</p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
                           <span className="h-2 w-2 rounded-full bg-info" />
-                          <span className="text-fg/50">Input</span>
+                          <span className={cn(typography.overline.size, "text-fg/40")}>Input</span>
                         </div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-2">
                           <span className="h-2 w-2 rounded-full bg-accent" />
-                          <span className="text-fg/50">Output</span>
+                          <span className={cn(typography.overline.size, "text-fg/40")}>Output</span>
                         </div>
                       </div>
                     </div>
-                    <div className="h-48">
+                    <div className="h-64">
                       <ResponsiveContainer width="100%" height="100%">
                         <AreaChart
                           data={chartData}
-                          margin={{ top: 5, right: 5, left: -20, bottom: 0 }}
+                          margin={{ top: 0, right: 0, left: -20, bottom: 0 }}
                         >
                           <defs>
                             <linearGradient id="inputGrad" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="var(--color-info)" stopOpacity={0.3} />
+                              <stop offset="5%" stopColor="var(--color-info)" stopOpacity={0.25} />
                               <stop offset="95%" stopColor="var(--color-info)" stopOpacity={0} />
                             </linearGradient>
                             <linearGradient id="outputGrad" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.3} />
+                              <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.25} />
                               <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
                             </linearGradient>
                           </defs>
                           <XAxis
                             dataKey="label"
-                            tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }}
-                            axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
+                            tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10, fontWeight: 500 }}
+                            axisLine={false}
                             tickLine={false}
+                            dy={10}
                           />
                           <YAxis
-                            tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }}
+                            tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10, fontWeight: 500 }}
                             axisLine={false}
                             tickLine={false}
                             tickFormatter={formatCompactNumber}
                           />
-                          <Tooltip content={<ChartTooltip />} />
+                          <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }} />
                           <Area
                             type="monotone"
                             dataKey="input"
                             name="Input"
                             stroke="var(--color-info)"
                             fill="url(#inputGrad)"
-                            strokeWidth={2}
+                            strokeWidth={2.5}
+                            animationDuration={1500}
                           />
                           <Area
                             type="monotone"
@@ -988,26 +960,29 @@ export function UsagePage() {
                             name="Output"
                             stroke="var(--color-accent)"
                             fill="url(#outputGrad)"
-                            strokeWidth={2}
+                            strokeWidth={2.5}
+                            animationDuration={1500}
                           />
                         </AreaChart>
                       </ResponsiveContainer>
                     </div>
-                  </motion.div>
+                  </div>
                 )}
 
-                {/* Two Column Layout */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   {topModels.length > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.05 }}
-                      className="rounded-2xl border border-fg/10 bg-fg/5 p-4"
-                    >
-                      <h3 className="text-sm font-semibold text-fg mb-4">By Model</h3>
-                      <div className="flex gap-4">
-                        <div className="w-28 h-28 shrink-0">
+                    <div className={cn(
+                      "p-5",
+                      components.card.base,
+                      "bg-fg/5 border-fg/10"
+                    )}>
+                      <h3 className={cn(typography.h3.size, typography.h3.weight, "text-fg mb-6")}>By Model</h3>
+                      <div className="flex items-center gap-6">
+                        <div className="w-32 h-32 shrink-0 relative">
+                           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                              <span className={cn(typography.caption.size, "text-fg/30 uppercase tracking-widest")}>Top</span>
+                              <span className={cn(typography.h2.size, typography.h2.weight, "text-fg")}>{topModels.length}</span>
+                           </div>
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                               <Pie
@@ -1016,9 +991,10 @@ export function UsagePage() {
                                 nameKey="name"
                                 cx="50%"
                                 cy="50%"
-                                innerRadius={25}
-                                outerRadius={45}
-                                paddingAngle={2}
+                                innerRadius={45}
+                                outerRadius={60}
+                                paddingAngle={4}
+                                stroke="none"
                               >
                                 {topModels.map((_, i) => (
                                   <Cell key={i} fill={COLORS[i % COLORS.length]} />
@@ -1027,34 +1003,37 @@ export function UsagePage() {
                             </PieChart>
                           </ResponsiveContainer>
                         </div>
-                        <div className="flex-1 space-y-2">
+                        <div className="flex-1 space-y-3">
                           {topModels.slice(0, 4).map((m, i) => (
-                            <div key={m.id} className="flex items-center gap-2">
-                              <span
+                            <div key={m.id} className="flex items-center gap-3">
+                              <div
                                 className="h-2 w-2 rounded-full shrink-0"
                                 style={{ backgroundColor: COLORS[i % COLORS.length] }}
                               />
-                              <span className="text-xs text-fg/70 truncate flex-1">{m.name}</span>
-                              <span className="text-xs text-fg/40">
+                              <span className={cn(typography.bodySmall.size, "text-fg/70 truncate flex-1")}>{m.name}</span>
+                              <span className={cn(typography.caption.size, "text-fg/40 font-bold")}>
                                 {formatCompactNumber(m.tokens)}
                               </span>
                             </div>
                           ))}
                         </div>
                       </div>
-                    </motion.div>
+                    </div>
                   )}
 
                   {characterOptions.length > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.1 }}
-                      className="rounded-2xl border border-fg/10 bg-fg/5 p-4"
-                    >
-                      <h3 className="text-sm font-semibold text-fg mb-4">By Character</h3>
-                      <div className="flex gap-4">
-                        <div className="w-28 h-28 shrink-0">
+                    <div className={cn(
+                      "p-5",
+                      components.card.base,
+                      "bg-fg/5 border-fg/10"
+                    )}>
+                      <h3 className={cn(typography.h3.size, typography.h3.weight, "text-fg mb-6")}>By Character</h3>
+                      <div className="flex items-center gap-6">
+                        <div className="w-32 h-32 shrink-0 relative">
+                          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                              <span className={cn(typography.caption.size, "text-fg/30 uppercase tracking-widest")}>Active</span>
+                              <span className={cn(typography.h2.size, typography.h2.weight, "text-fg")}>{characterOptions.length}</span>
+                           </div>
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                               <Pie
@@ -1063,9 +1042,10 @@ export function UsagePage() {
                                 nameKey="name"
                                 cx="50%"
                                 cy="50%"
-                                innerRadius={25}
-                                outerRadius={45}
-                                paddingAngle={2}
+                                innerRadius={45}
+                                outerRadius={60}
+                                paddingAngle={4}
+                                stroke="none"
                               >
                                 {characterOptions.slice(0, 5).map((_, i) => (
                                   <Cell key={i} fill={COLORS[i % COLORS.length]} />
@@ -1074,193 +1054,197 @@ export function UsagePage() {
                             </PieChart>
                           </ResponsiveContainer>
                         </div>
-                        <div className="flex-1 space-y-2">
+                        <div className="flex-1 space-y-3">
                           {characterOptions.slice(0, 4).map((c, i) => (
-                            <div key={c.id} className="flex items-center gap-2">
-                              <span
+                            <div key={c.id} className="flex items-center gap-3">
+                              <div
                                 className="h-2 w-2 rounded-full shrink-0"
                                 style={{ backgroundColor: COLORS[i % COLORS.length] }}
                               />
-                              <span className="text-xs text-fg/70 truncate flex-1">{c.name}</span>
-                              <span className="text-xs text-fg/40">
+                              <span className={cn(typography.bodySmall.size, "text-fg/70 truncate flex-1")}>{c.name}</span>
+                              <span className={cn(typography.caption.size, "text-fg/40 font-bold")}>
                                 {formatCompactNumber(c.tokens)}
                               </span>
                             </div>
                           ))}
                         </div>
                       </div>
-                    </motion.div>
+                    </div>
                   )}
                 </div>
 
-                {/* Recent Activity */}
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="rounded-2xl border border-fg/10 bg-fg/5 overflow-hidden"
-                >
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-fg/10">
-                    <h3 className="text-sm font-semibold text-fg">Recent Activity</h3>
+                <div className={cn(
+                  "overflow-hidden",
+                  components.card.base,
+                  "bg-fg/5 border-fg/10"
+                )}>
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-fg/10 bg-fg/5">
+                    <h3 className={cn(typography.h3.size, typography.h3.weight, "text-fg")}>Recent Activity</h3>
                     {filteredRecords.length > 5 && (
-                      <button
-                        onClick={() => setShowAllActivity(true)}
-                        className="flex items-center gap-1 text-xs text-accent hover:text-accent/80 transition"
-                      >
-                        View all
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      </button>
+                      <div className="flex items-center gap-4">
+                        <button
+                          onClick={() => setShowAllActivity(true)}
+                          className={cn(typography.caption.size, typography.caption.weight, "text-fg/40 hover:text-fg/60 transition-colors")}
+                        >
+                          Quick View
+                        </button>
+                        <button
+                          onClick={() => navigate("/settings/usage/activity")}
+                          className={cn(
+                            "flex items-center gap-1 transition-all",
+                            typography.caption.size, 
+                            typography.caption.weight,
+                            "text-accent hover:opacity-80"
+                          )}
+                        >
+                          View All
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     )}
                   </div>
-                  <div className="divide-y divide-fg/5">
+                  <div className="divide-y divide-fg/10">
                     {filteredRecords.slice(0, 5).map((r) => (
                       <ActivityItem key={r.id} request={r} />
                     ))}
                     {filteredRecords.length === 0 && (
-                      <div className="py-12 text-center">
-                        <Calendar className="h-8 w-8 text-fg/20 mx-auto mb-2" />
-                        <p className="text-sm text-fg/50">{t("common.labels.none")}</p>
-                        <p className="text-xs text-fg/30 mt-1">Start chatting to see usage data</p>
+                      <div className="py-20 text-center">
+                        <Calendar className="h-10 w-10 text-fg/10 mx-auto mb-4" />
+                        <p className={cn(typography.body.size, "text-fg/40")}>{t("common.labels.none")}</p>
+                        <p className={cn(typography.caption.size, "text-fg/30 mt-1.5")}>Start chatting to see usage data</p>
                       </div>
                     )}
                   </div>
-                </motion.div>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ================================================================== */}
-        {/* APP TIME VIEW */}
-        {/* ================================================================== */}
-        {viewMode === "appTime" && (
-          <div className="space-y-4">
-            <div className="inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-fg/5 border border-fg/10">
-              {[
-                { key: "today", label: "Today" },
-                { key: "week", label: "7 Days" },
-                { key: "month", label: "30 Days" },
-                { key: "all", label: "All" },
-                { key: "custom", label: "Custom" },
-              ].map(({ key, label }) => (
-                <button
-                  key={key}
-                  onClick={() => {
-                    if (key === "custom") {
-                      setShowCustomDatePicker(true);
-                      return;
-                    }
-                    setAppTimePreset(key as typeof appTimePreset);
-                  }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    appTimePreset === key ? "bg-fg/10 text-fg" : "text-fg/50 hover:text-fg/70"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <StatCard
-                icon={Clock}
-                label="Period Total"
-                value={formatDurationMs(appTimeStats.rangeTotalMs)}
-                subValue={`${appTimeStats.selectedDays} day${appTimeStats.selectedDays === 1 ? "" : "s"}`}
-                trend={{
-                  value:
-                    appTimeStats.prevRangeTotalMs > 0
-                      ? Math.abs(
-                          ((appTimeStats.rangeTotalMs - appTimeStats.prevRangeTotalMs) /
-                            appTimeStats.prevRangeTotalMs) *
-                            100,
-                        )
-                      : appTimeStats.rangeTotalMs > 0
-                        ? 100
-                        : 0,
-                  isUp: appTimeStats.rangeTotalMs >= appTimeStats.prevRangeTotalMs,
-                }}
-                highlight
-              />
-              <StatCard
-                icon={Activity}
-                label="Daily Avg"
-                value={formatDurationMs(appTimeStats.dailyAvgInRangeMs)}
-                subValue="in selected period"
-              />
-              <StatCard
-                icon={Activity}
-                label="Today"
-                value={formatDurationMs(appTimeStats.todayMs)}
-                subValue={`Yesterday ${formatDurationMs(appTimeStats.yesterdayMs)}`}
-              />
-              <StatCard
-                icon={Activity}
-                label="30-Day Avg"
-                value={formatDurationMs(appTimeStats.avg30Ms)}
-              />
-            </div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="rounded-2xl border border-fg/10 bg-fg/5 p-4"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-fg">App Time Trend</h3>
-                <div className="text-[11px] text-fg/45">
-                  Total {formatDurationMs(appTimeStats.rangeTotalMs)}
-                  {appTimePreset !== "all" && (
-                    <span
-                      className={`ml-2 ${appTimeStats.rangeDeltaMs >= 0 ? "text-accent" : "text-danger"}`}
-                    >
-                      {appTimeStats.rangeDeltaMs >= 0 ? "+" : "-"}
-                      {formatDurationMs(Math.abs(appTimeStats.rangeDeltaMs))} (
-                      {appTimeStats.rangeDeltaMs >= 0 ? "+" : ""}
-                      {appTimeStats.rangeDeltaPct.toFixed(0)}%)
-                    </span>
-                  )}
                 </div>
-              </div>
-              <div className="h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart
-                    data={appTimeStats.byDayChart}
-                    margin={{ top: 5, right: 5, left: -20, bottom: 0 }}
-                  >
-                    <defs>
-                      <linearGradient id="appTimeGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.35} />
-                        <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis
-                      dataKey="label"
-                      tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }}
-                      axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }}
-                      axisLine={false}
-                      tickLine={false}
-                      tickFormatter={(v) => formatDurationMs(v)}
-                    />
-                    <Tooltip content={<AppTimeTooltip />} />
-                    <Area
-                      type="monotone"
-                      dataKey="ms"
-                      name="Active Time"
-                      stroke="var(--color-accent)"
-                      fill="url(#appTimeGrad)"
-                      strokeWidth={2}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </motion.div>
-          </div>
-        )}
+              </motion.div>
+            ) : (
+              <motion.div
+                key="appTime"
+                {...animations.fadeIn}
+                className="space-y-6"
+              >
+                <div className={cn(
+                  "flex flex-wrap items-center gap-1.5 p-1.5 bg-fg/5 border border-fg/10",
+                  radius.lg
+                )}>
+                  {[
+                    { key: "today", label: "Today" },
+                    { key: "week", label: "7 Days" },
+                    { key: "month", label: "30 Days" },
+                    { key: "all", label: "All" },
+                    { key: "custom", label: "Custom" },
+                  ].map(({ key, label }) => (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        if (key === "custom") {
+                          setShowCustomDatePicker(true);
+                          return;
+                        }
+                        setAppTimePreset(key as typeof appTimePreset);
+                      }}
+                      className={cn(
+                        "px-4 py-1.5 rounded-lg transition-all duration-200",
+                        typography.caption.size,
+                        typography.caption.weight,
+                        appTimePreset === key 
+                          ? "bg-fg/10 text-fg shadow-sm" 
+                          : "text-fg/40 hover:text-fg/70 hover:bg-fg/5"
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <StatCard
+                    icon={Clock}
+                    label="Period Total"
+                    value={formatDurationMs(appTimeStats.rangeTotalMs)}
+                    subValue={`${appTimeStats.selectedDays} days active`}
+                    trend={{
+                      value: appTimeStats.rangeDeltaPct,
+                      isUp: appTimeStats.rangeDeltaPct >= 0,
+                    }}
+                    highlight
+                  />
+                  <StatCard
+                    icon={Activity}
+                    label="Daily Avg"
+                    value={formatDurationMs(appTimeStats.dailyAvgInRangeMs)}
+                    subValue="selected period"
+                  />
+                  <StatCard
+                    icon={Activity}
+                    label="Today"
+                    value={formatDurationMs(appTimeStats.todayMs)}
+                    subValue={`Yesterday ${formatDurationMs(appTimeStats.yesterdayMs)}`}
+                  />
+                  <StatCard
+                    icon={Activity}
+                    label="30-Day Avg"
+                    value={formatDurationMs(appTimeStats.avg30Ms)}
+                  />
+                </div>
+
+                <div className={cn(
+                  "p-6",
+                  components.card.base,
+                  "bg-fg/5 border-fg/10"
+                )}>
+                  <div className="flex items-center justify-between mb-8">
+                    <div>
+                      <h3 className={cn(typography.h3.size, typography.h3.weight, "text-fg")}>App Time Trend</h3>
+                      <p className={cn(typography.caption.size, "text-fg/40 mt-0.5")}>Usage duration per day</p>
+                    </div>
+                    <div className={cn(typography.caption.size, "font-bold text-fg/50 px-3 py-1 bg-fg/5 rounded-full border border-fg/5")}>
+                      Total {formatDurationMs(appTimeStats.rangeTotalMs)}
+                    </div>
+                  </div>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart
+                        data={appTimeStats.byDayChart}
+                        margin={{ top: 0, right: 0, left: -20, bottom: 0 }}
+                      >
+                        <defs>
+                          <linearGradient id="appTimeGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.25} />
+                            <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <XAxis
+                          dataKey="label"
+                          tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10, fontWeight: 500 }}
+                          axisLine={false}
+                          tickLine={false}
+                          dy={10}
+                        />
+                        <YAxis
+                          tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10, fontWeight: 500 }}
+                          axisLine={false}
+                          tickLine={false}
+                          tickFormatter={(v) => formatDurationMs(v)}
+                        />
+                        <Tooltip content={<AppTimeTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }} />
+                        <Area
+                          type="monotone"
+                          dataKey="ms"
+                          name="Active Time"
+                          stroke="var(--color-accent)"
+                          fill="url(#appTimeGrad)"
+                          strokeWidth={2.5}
+                          animationDuration={1500}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );
