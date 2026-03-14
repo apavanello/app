@@ -690,6 +690,46 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
         CREATE INDEX IF NOT EXISTS idx_group_messages_turn ON group_messages(session_id, turn_number);
         CREATE INDEX IF NOT EXISTS idx_group_messages_speaker ON group_messages(speaker_character_id);
         CREATE INDEX IF NOT EXISTS idx_group_message_variants_message ON group_message_variants(message_id);
+
+        -- Sync state
+        CREATE TABLE IF NOT EXISTS sync_local_state (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS sync_changes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          domain TEXT NOT NULL,
+          entity_type TEXT NOT NULL,
+          entity_id TEXT NOT NULL,
+          op TEXT NOT NULL,
+          payload_schema INTEGER NOT NULL DEFAULT 1,
+          payload_hash TEXT NOT NULL,
+          payload BLOB NOT NULL DEFAULT X'',
+          created_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS sync_entity_heads (
+          domain TEXT NOT NULL,
+          entity_type TEXT NOT NULL,
+          entity_id TEXT NOT NULL,
+          payload_hash TEXT NOT NULL,
+          payload_schema INTEGER NOT NULL DEFAULT 1,
+          payload BLOB NOT NULL DEFAULT X'',
+          deleted INTEGER NOT NULL DEFAULT 0,
+          last_change_id INTEGER NOT NULL,
+          PRIMARY KEY (domain, entity_type, entity_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS sync_peer_cursors (
+          peer_device_id TEXT NOT NULL,
+          domain TEXT NOT NULL,
+          last_change_id INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (peer_device_id, domain)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_sync_changes_domain_id ON sync_changes(domain, id);
+        CREATE INDEX IF NOT EXISTS idx_sync_changes_entity ON sync_changes(domain, entity_type, entity_id, id);
       "#,
     )
     .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;

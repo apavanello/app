@@ -12,14 +12,31 @@ pub enum SyncDomain {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct DomainManifest {
+pub struct DomainCursor {
     pub domain: SyncDomain,
-    pub fingerprint: String,
+    pub last_change_id: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq, Eq)]
-pub struct SyncManifest {
-    pub domains: Vec<DomainManifest>,
+pub struct CursorSet {
+    pub cursors: Vec<DomainCursor>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangeOp {
+    Upsert,
+    Delete,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct ChangeRecord {
+    pub change_id: i64,
+    pub entity_type: String,
+    pub entity_id: String,
+    pub op: ChangeOp,
+    pub payload_schema: u16,
+    pub payload_hash: String,
+    pub payload: Vec<u8>,
 }
 
 // 3. The Actual Messages over TCP
@@ -30,6 +47,8 @@ pub enum P2PMessage {
         #[serde(default = "default_protocol_version")]
         protocol_version: u32,
         device_name: String,
+        #[serde(default)]
+        device_id: String,
         salt: [u8; 16],
         challenge: [u8; 16], // Random bytes the other side must decrypt and return
     },
@@ -46,14 +65,14 @@ pub enum P2PMessage {
     },
 
     // Sync Coordination
-    SyncManifest {
-        manifest: SyncManifest,
+    AdvertiseCursors {
+        cursors: CursorSet,
     },
 
     // Data Transfer
-    DomainSnapshot {
+    PushChanges {
         domain: SyncDomain,
-        payload: Vec<u8>,
+        changes: Vec<ChangeRecord>,
     },
 
     // Control

@@ -1,4 +1,5 @@
 use rusqlite::params;
+use std::collections::{HashMap, HashSet};
 
 use crate::storage_manager::db::DbConnection;
 use crate::sync::models::{
@@ -8,7 +9,33 @@ use crate::sync::models::{
     SceneVariant, Secret, Session, Settings, SyncLorebook, SyncLorebookEntry, UsageMetadata,
     UsageRecord, UserVoice,
 };
-use crate::sync::protocol::{DomainManifest, SyncDomain, SyncManifest};
+use crate::sync::protocol::{ChangeOp, ChangeRecord, CursorSet, DomainCursor, SyncDomain};
+
+const CHANGE_SCHEMA_VERSION: u16 = 1;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct EntityKey {
+    domain: SyncDomain,
+    entity_type: String,
+    entity_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct CurrentEntityRecord {
+    key: EntityKey,
+    payload_schema: u16,
+    payload_hash: String,
+    payload: Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
+struct EntityHeadRecord {
+    payload_hash: String,
+    payload_schema: u16,
+    payload: Vec<u8>,
+    deleted: bool,
+    last_change_id: i64,
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct CoreSnapshot {
@@ -114,7 +141,63 @@ struct MessagesSnapshot {
     usage_metadata: Vec<UsageMetadata>,
 }
 
-pub fn build_sync_manifest(conn: &DbConnection) -> Result<SyncManifest, String> {
+pub fn get_or_create_local_device_id(conn: &DbConnection) -> Result<String, String> {
+    if let Ok(device_id) = conn.query_row(
+        "SELECT value FROM sync_local_state WHERE key = 'device_id'",
+        [],
+        |row| row.get::<_, String>(0),
+    ) {
+        return Ok(device_id);
+    }
+
+    let device_id = uuid::Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT OR REPLACE INTO sync_local_state (key, value) VALUES ('device_id', ?1)",
+        params![device_id],
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    Ok(device_id)
+}
+
+pub fn rebuild_change_log(conn: &mut DbConnection) -> Result<(), String> {
+    let current_records = collect_current_entity_records(conn)?;
+    let current_keys = current_records
+        .iter()
+        .map(|record| record.key.clone())
+        .collect::<HashSet<_>>();
+    let heads = load_entity_heads(conn)?;
+    let tx = conn
+        .transaction()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    for record in current_records {
+        let head = heads.get(&record.key);
+        if head.is_some_and(|head| !head.deleted && head.payload_hash == record.payload_hash) {
+            continue;
+        }
+
+        append_change(
+            &tx,
+            &record.key,
+            ChangeOp::Upsert,
+            record.payload_schema,
+            &record.payload_hash,
+            &record.payload,
+        )?;
+    }
+
+    for (key, head) in heads {
+        if !head.deleted && !current_keys.contains(&key) {
+            append_change(&tx, &key, ChangeOp::Delete, CHANGE_SCHEMA_VERSION, "", &[])?;
+        }
+    }
+
+    tx.commit()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+pub fn load_peer_cursors(conn: &DbConnection, peer_device_id: &str) -> Result<CursorSet, String> {
     let domains = [
         SyncDomain::Core,
         SyncDomain::Tts,
@@ -124,45 +207,105 @@ pub fn build_sync_manifest(conn: &DbConnection) -> Result<SyncManifest, String> 
         SyncDomain::Sessions,
         SyncDomain::Messages,
     ];
+    let mut cursors = Vec::with_capacity(domains.len());
 
-    let mut manifest = SyncManifest::default();
     for domain in domains {
-        let payload = fetch_domain_snapshot(conn, domain)?;
-        manifest.domains.push(DomainManifest {
+        let last_change_id = conn
+            .query_row(
+                "SELECT last_change_id FROM sync_peer_cursors WHERE peer_device_id = ?1 AND domain = ?2",
+                params![peer_device_id, sync_domain_name(domain)],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap_or(0);
+        cursors.push(DomainCursor {
             domain,
-            fingerprint: blake3::hash(&payload).to_hex().to_string(),
+            last_change_id,
         });
     }
 
-    Ok(manifest)
+    Ok(CursorSet { cursors })
 }
 
-pub fn fetch_domain_snapshot(conn: &DbConnection, domain: SyncDomain) -> Result<Vec<u8>, String> {
-    match domain {
-        SyncDomain::Core => serialize_core_snapshot(conn),
-        SyncDomain::Tts => serialize_tts_snapshot(conn),
-        SyncDomain::Lorebooks => serialize_lorebooks_snapshot(conn),
-        SyncDomain::Characters => serialize_characters_snapshot(conn),
-        SyncDomain::Groups => serialize_groups_snapshot(conn),
-        SyncDomain::Sessions => serialize_sessions_snapshot(conn),
-        SyncDomain::Messages => serialize_messages_snapshot(conn),
-    }
+pub fn fetch_changes_since(
+    conn: &DbConnection,
+    domain: SyncDomain,
+    after_change_id: i64,
+) -> Result<Vec<ChangeRecord>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, entity_type, entity_id, op, payload_schema, payload_hash, payload
+             FROM sync_changes
+             WHERE domain = ?1 AND id > ?2
+             ORDER BY id ASC",
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let rows = stmt
+        .query_map(params![sync_domain_name(domain), after_change_id], |row| {
+            Ok(ChangeRecord {
+                change_id: row.get(0)?,
+                entity_type: row.get(1)?,
+                entity_id: row.get(2)?,
+                op: parse_change_op(&row.get::<_, String>(3)?),
+                payload_schema: row.get(4)?,
+                payload_hash: row.get(5)?,
+                payload: row.get(6)?,
+            })
+        })
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
 }
 
-pub fn apply_domain_snapshot(
+pub fn record_peer_cursor(
+    conn: &DbConnection,
+    peer_device_id: &str,
+    domain: SyncDomain,
+    last_change_id: i64,
+) -> Result<(), String> {
+    conn.execute(
+        r#"INSERT INTO sync_peer_cursors (peer_device_id, domain, last_change_id)
+           VALUES (?1, ?2, ?3)
+           ON CONFLICT(peer_device_id, domain)
+           DO UPDATE SET last_change_id = excluded.last_change_id"#,
+        params![peer_device_id, sync_domain_name(domain), last_change_id],
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    Ok(())
+}
+
+pub fn apply_change_batch(
     conn: &mut DbConnection,
     domain: SyncDomain,
-    payload: &[u8],
+    changes: &[ChangeRecord],
 ) -> Result<(), String> {
-    match domain {
-        SyncDomain::Core => apply_core_snapshot(conn, payload),
-        SyncDomain::Tts => apply_tts_snapshot(conn, payload),
-        SyncDomain::Lorebooks => apply_lorebooks_snapshot(conn, payload),
-        SyncDomain::Characters => apply_characters_snapshot(conn, payload),
-        SyncDomain::Groups => apply_groups_snapshot(conn, payload),
-        SyncDomain::Sessions => apply_sessions_snapshot(conn, payload),
-        SyncDomain::Messages => apply_messages_snapshot(conn, payload),
+    if changes.is_empty() {
+        return Ok(());
     }
+
+    let tx = conn
+        .transaction()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    for change in changes {
+        let key = EntityKey {
+            domain,
+            entity_type: change.entity_type.clone(),
+            entity_id: change.entity_id.clone(),
+        };
+        append_change(
+            &tx,
+            &key,
+            change.op,
+            change.payload_schema,
+            &change.payload_hash,
+            &change.payload,
+        )?;
+    }
+
+    tx.commit()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    materialize_domain_heads(conn, domain)
 }
 
 fn serialize_core_snapshot(conn: &DbConnection) -> Result<Vec<u8>, String> {
@@ -286,6 +429,685 @@ fn serialize_messages_snapshot(conn: &DbConnection) -> Result<Vec<u8>, String> {
         usage_metadata: session_usage_metadata,
     })
     .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+fn sync_domain_name(domain: SyncDomain) -> &'static str {
+    match domain {
+        SyncDomain::Core => "core",
+        SyncDomain::Tts => "tts",
+        SyncDomain::Lorebooks => "lorebooks",
+        SyncDomain::Characters => "characters",
+        SyncDomain::Groups => "groups",
+        SyncDomain::Sessions => "sessions",
+        SyncDomain::Messages => "messages",
+    }
+}
+
+fn parse_sync_domain(value: &str) -> Result<SyncDomain, String> {
+    match value {
+        "core" => Ok(SyncDomain::Core),
+        "tts" => Ok(SyncDomain::Tts),
+        "lorebooks" => Ok(SyncDomain::Lorebooks),
+        "characters" => Ok(SyncDomain::Characters),
+        "groups" => Ok(SyncDomain::Groups),
+        "sessions" => Ok(SyncDomain::Sessions),
+        "messages" => Ok(SyncDomain::Messages),
+        _ => Err(crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!("Unknown sync domain: {}", value),
+        )),
+    }
+}
+
+fn change_op_name(op: ChangeOp) -> &'static str {
+    match op {
+        ChangeOp::Upsert => "upsert",
+        ChangeOp::Delete => "delete",
+    }
+}
+
+fn parse_change_op(value: &str) -> ChangeOp {
+    match value {
+        "delete" => ChangeOp::Delete,
+        _ => ChangeOp::Upsert,
+    }
+}
+
+fn build_entity_record<T: serde::Serialize>(
+    domain: SyncDomain,
+    entity_type: &str,
+    entity_id: String,
+    value: &T,
+) -> Result<CurrentEntityRecord, String> {
+    let payload = bincode::serialize(value)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let payload_hash = blake3::hash(&payload).to_hex().to_string();
+    Ok(CurrentEntityRecord {
+        key: EntityKey {
+            domain,
+            entity_type: entity_type.to_string(),
+            entity_id,
+        },
+        payload_schema: CHANGE_SCHEMA_VERSION,
+        payload_hash,
+        payload,
+    })
+}
+
+fn push_entity_record<T: serde::Serialize>(
+    records: &mut Vec<CurrentEntityRecord>,
+    domain: SyncDomain,
+    entity_type: &str,
+    entity_id: String,
+    value: &T,
+) -> Result<(), String> {
+    records.push(build_entity_record(domain, entity_type, entity_id, value)?);
+    Ok(())
+}
+
+fn collect_current_entity_records(conn: &DbConnection) -> Result<Vec<CurrentEntityRecord>, String> {
+    let mut records = Vec::new();
+
+    let (
+        meta,
+        settings,
+        personas,
+        models,
+        secrets,
+        provider_credentials,
+        prompt_templates,
+        audio_providers,
+        user_voices,
+    ) = fetch_global_core(conn)?;
+
+    for item in &meta {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Core,
+            "meta",
+            item.key.clone(),
+            item,
+        )?;
+    }
+    for item in &settings {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Core,
+            "settings",
+            item.id.to_string(),
+            item,
+        )?;
+    }
+    for item in &personas {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Core,
+            "persona",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &models {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Core,
+            "model",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &secrets {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Core,
+            "secret",
+            format!("{}::{}", item.service, item.account),
+            item,
+        )?;
+    }
+    for item in &provider_credentials {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Core,
+            "provider_credential",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &prompt_templates {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Core,
+            "prompt_template",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &audio_providers {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Tts,
+            "audio_provider",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &user_voices {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Tts,
+            "user_voice",
+            item.id.clone(),
+            item,
+        )?;
+    }
+
+    let lorebook_ids = collect_text_ids(conn, "SELECT id FROM lorebooks")?;
+    let lorebook_payload = fetch_lorebooks(conn, &lorebook_ids)?;
+    let (lorebooks, lorebook_entries): (Vec<SyncLorebook>, Vec<SyncLorebookEntry>) =
+        bincode::deserialize(&lorebook_payload)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    for item in &lorebooks {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Lorebooks,
+            "lorebook",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &lorebook_entries {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Lorebooks,
+            "lorebook_entry",
+            item.id.clone(),
+            item,
+        )?;
+    }
+
+    let character_ids = collect_text_ids(conn, "SELECT id FROM characters")?;
+    let (
+        characters,
+        character_rules,
+        scenes,
+        scene_variants,
+        character_lorebooks,
+        chat_templates,
+        chat_template_messages,
+    ) = fetch_characters_data(conn, &character_ids)?;
+    for item in &characters {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Characters,
+            "character",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &character_rules {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Characters,
+            "character_rule",
+            format!("{}:{}", item.character_id, item.idx),
+            item,
+        )?;
+    }
+    for item in &scenes {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Characters,
+            "scene",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &scene_variants {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Characters,
+            "scene_variant",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &character_lorebooks {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Characters,
+            "character_lorebook",
+            format!("{}:{}", item.character_id, item.lorebook_id),
+            item,
+        )?;
+    }
+    for item in &chat_templates {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Characters,
+            "chat_template",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &chat_template_messages {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Characters,
+            "chat_template_message",
+            item.id.clone(),
+            item,
+        )?;
+    }
+
+    let group_characters = fetch_group_configs(conn)?;
+    let group_session_ids = collect_text_ids(conn, "SELECT id FROM group_sessions")?;
+    let (
+        group_sessions,
+        group_participation,
+        group_messages,
+        group_message_variants,
+        group_usage_records,
+        group_usage_metadata,
+    ) = fetch_group_sessions_full(conn, &group_session_ids)?;
+    for item in &group_characters {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Groups,
+            "group_character",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &group_sessions {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Groups,
+            "group_session",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &group_participation {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Groups,
+            "group_participation",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &group_messages {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Groups,
+            "group_message",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &group_message_variants {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Groups,
+            "group_message_variant",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &group_usage_records {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Groups,
+            "group_usage_record",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &group_usage_metadata {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Groups,
+            "group_usage_metadata",
+            format!("{}:{}", item.usage_id, item.key),
+            item,
+        )?;
+    }
+
+    let session_ids = collect_text_ids(conn, "SELECT id FROM sessions")?;
+    let (sessions, messages, message_variants, usage_records, usage_metadata) =
+        fetch_sessions_data(conn, &session_ids)?;
+    for item in &sessions {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Sessions,
+            "session",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &messages {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Messages,
+            "message",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &message_variants {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Messages,
+            "message_variant",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &usage_records {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Messages,
+            "usage_record",
+            item.id.clone(),
+            item,
+        )?;
+    }
+    for item in &usage_metadata {
+        push_entity_record(
+            &mut records,
+            SyncDomain::Messages,
+            "usage_metadata",
+            format!("{}:{}", item.usage_id, item.key),
+            item,
+        )?;
+    }
+
+    Ok(records)
+}
+
+fn load_entity_heads(conn: &DbConnection) -> Result<HashMap<EntityKey, EntityHeadRecord>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT domain, entity_type, entity_id, payload_hash, payload_schema, payload, deleted, last_change_id
+             FROM sync_entity_heads",
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let rows = stmt
+        .query_map([], |row| {
+            let domain_name: String = row.get(0)?;
+            Ok((
+                domain_name,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, u16>(4)?,
+                row.get::<_, Vec<u8>>(5)?,
+                row.get::<_, i64>(6)?,
+                row.get::<_, i64>(7)?,
+            ))
+        })
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    let mut heads = HashMap::new();
+    for row in rows {
+        let (
+            domain_name,
+            entity_type,
+            entity_id,
+            payload_hash,
+            payload_schema,
+            payload,
+            deleted,
+            last_change_id,
+        ) = row.map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        heads.insert(
+            EntityKey {
+                domain: parse_sync_domain(&domain_name)?,
+                entity_type,
+                entity_id,
+            },
+            EntityHeadRecord {
+                payload_hash,
+                payload_schema,
+                payload,
+                deleted: deleted != 0,
+                last_change_id,
+            },
+        );
+    }
+
+    Ok(heads)
+}
+
+fn append_change(
+    tx: &rusqlite::Transaction<'_>,
+    key: &EntityKey,
+    op: ChangeOp,
+    payload_schema: u16,
+    payload_hash: &str,
+    payload: &[u8],
+) -> Result<i64, String> {
+    let created_at = crate::utils::now_millis().unwrap_or(0) as i64;
+    tx.execute(
+        r#"INSERT INTO sync_changes (domain, entity_type, entity_id, op, payload_schema, payload_hash, payload, created_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"#,
+        params![
+            sync_domain_name(key.domain),
+            key.entity_type,
+            key.entity_id,
+            change_op_name(op),
+            payload_schema,
+            payload_hash,
+            payload,
+            created_at
+        ],
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let change_id = tx.last_insert_rowid();
+
+    tx.execute(
+        r#"INSERT INTO sync_entity_heads (domain, entity_type, entity_id, payload_hash, payload_schema, payload, deleted, last_change_id)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+           ON CONFLICT(domain, entity_type, entity_id)
+           DO UPDATE SET
+             payload_hash = excluded.payload_hash,
+             payload_schema = excluded.payload_schema,
+             payload = excluded.payload,
+             deleted = excluded.deleted,
+             last_change_id = excluded.last_change_id"#,
+        params![
+            sync_domain_name(key.domain),
+            key.entity_type,
+            key.entity_id,
+            payload_hash,
+            payload_schema,
+            payload,
+            if op == ChangeOp::Delete { 1 } else { 0 },
+            change_id
+        ],
+    )
+    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    Ok(change_id)
+}
+
+fn materialize_domain_heads(conn: &mut DbConnection, domain: SyncDomain) -> Result<(), String> {
+    let heads = load_entity_heads(conn)?;
+    let domain_heads = heads
+        .into_iter()
+        .filter_map(|(key, head)| {
+            if key.domain == domain && !head.deleted {
+                Some((key, head))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    match domain {
+        SyncDomain::Core => {
+            let mut snapshot = CoreSnapshot {
+                meta: Vec::new(),
+                settings: Vec::new(),
+                personas: Vec::new(),
+                models: Vec::new(),
+                secrets: Vec::new(),
+                provider_credentials: Vec::new(),
+                prompt_templates: Vec::new(),
+            };
+            for (key, head) in domain_heads {
+                match key.entity_type.as_str() {
+                    "meta" => snapshot.meta.push(deserialize_head(&head)?),
+                    "settings" => snapshot.settings.push(deserialize_head(&head)?),
+                    "persona" => snapshot.personas.push(deserialize_head(&head)?),
+                    "model" => snapshot.models.push(deserialize_head(&head)?),
+                    "secret" => snapshot.secrets.push(deserialize_head(&head)?),
+                    "provider_credential" => {
+                        snapshot.provider_credentials.push(deserialize_head(&head)?)
+                    }
+                    "prompt_template" => snapshot.prompt_templates.push(deserialize_head(&head)?),
+                    _ => {}
+                }
+            }
+            let payload = bincode::serialize(&snapshot)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+            apply_core_snapshot(conn, &payload)
+        }
+        SyncDomain::Tts => {
+            let mut snapshot = TtsSnapshot {
+                audio_providers: Vec::new(),
+                user_voices: Vec::new(),
+            };
+            for (key, head) in domain_heads {
+                match key.entity_type.as_str() {
+                    "audio_provider" => snapshot.audio_providers.push(deserialize_head(&head)?),
+                    "user_voice" => snapshot.user_voices.push(deserialize_head(&head)?),
+                    _ => {}
+                }
+            }
+            let payload = bincode::serialize(&snapshot)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+            apply_tts_snapshot(conn, &payload)
+        }
+        SyncDomain::Lorebooks => {
+            let mut snapshot = LorebooksSnapshot {
+                lorebooks: Vec::new(),
+                entries: Vec::new(),
+            };
+            for (key, head) in domain_heads {
+                match key.entity_type.as_str() {
+                    "lorebook" => snapshot.lorebooks.push(deserialize_head(&head)?),
+                    "lorebook_entry" => snapshot.entries.push(deserialize_head(&head)?),
+                    _ => {}
+                }
+            }
+            let payload = bincode::serialize(&snapshot)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+            apply_lorebooks_snapshot(conn, &payload)
+        }
+        SyncDomain::Characters => {
+            let mut snapshot = CharactersSnapshot {
+                characters: Vec::new(),
+                rules: Vec::new(),
+                scenes: Vec::new(),
+                scene_variants: Vec::new(),
+                character_lorebooks: Vec::new(),
+                chat_templates: Vec::new(),
+                chat_template_messages: Vec::new(),
+            };
+            for (key, head) in domain_heads {
+                match key.entity_type.as_str() {
+                    "character" => snapshot.characters.push(deserialize_head(&head)?),
+                    "character_rule" => snapshot.rules.push(deserialize_head(&head)?),
+                    "scene" => snapshot.scenes.push(deserialize_head(&head)?),
+                    "scene_variant" => snapshot.scene_variants.push(deserialize_head(&head)?),
+                    "character_lorebook" => {
+                        snapshot.character_lorebooks.push(deserialize_head(&head)?)
+                    }
+                    "chat_template" => snapshot.chat_templates.push(deserialize_head(&head)?),
+                    "chat_template_message" => snapshot
+                        .chat_template_messages
+                        .push(deserialize_head(&head)?),
+                    _ => {}
+                }
+            }
+            let payload = bincode::serialize(&snapshot)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+            apply_characters_snapshot(conn, &payload)
+        }
+        SyncDomain::Groups => {
+            let mut snapshot = GroupsSnapshot {
+                group_characters: Vec::new(),
+                group_sessions: Vec::new(),
+                group_participation: Vec::new(),
+                group_messages: Vec::new(),
+                group_message_variants: Vec::new(),
+                usage_records: Vec::new(),
+                usage_metadata: Vec::new(),
+            };
+            for (key, head) in domain_heads {
+                match key.entity_type.as_str() {
+                    "group_character" => snapshot.group_characters.push(deserialize_head(&head)?),
+                    "group_session" => snapshot.group_sessions.push(deserialize_head(&head)?),
+                    "group_participation" => {
+                        snapshot.group_participation.push(deserialize_head(&head)?)
+                    }
+                    "group_message" => snapshot.group_messages.push(deserialize_head(&head)?),
+                    "group_message_variant" => snapshot
+                        .group_message_variants
+                        .push(deserialize_head(&head)?),
+                    "group_usage_record" => snapshot.usage_records.push(deserialize_head(&head)?),
+                    "group_usage_metadata" => {
+                        snapshot.usage_metadata.push(deserialize_head(&head)?)
+                    }
+                    _ => {}
+                }
+            }
+            let payload = bincode::serialize(&snapshot)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+            apply_groups_snapshot(conn, &payload)
+        }
+        SyncDomain::Sessions => {
+            let mut snapshot = SessionsSnapshot {
+                sessions: Vec::new(),
+            };
+            for (key, head) in domain_heads {
+                if key.entity_type == "session" {
+                    snapshot.sessions.push(deserialize_head(&head)?);
+                }
+            }
+            let payload = bincode::serialize(&snapshot)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+            apply_sessions_snapshot(conn, &payload)
+        }
+        SyncDomain::Messages => {
+            let mut snapshot = MessagesSnapshot {
+                messages: Vec::new(),
+                message_variants: Vec::new(),
+                usage_records: Vec::new(),
+                usage_metadata: Vec::new(),
+            };
+            for (key, head) in domain_heads {
+                match key.entity_type.as_str() {
+                    "message" => snapshot.messages.push(deserialize_head(&head)?),
+                    "message_variant" => snapshot.message_variants.push(deserialize_head(&head)?),
+                    "usage_record" => snapshot.usage_records.push(deserialize_head(&head)?),
+                    "usage_metadata" => snapshot.usage_metadata.push(deserialize_head(&head)?),
+                    _ => {}
+                }
+            }
+            let payload = bincode::serialize(&snapshot)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+            apply_messages_snapshot(conn, &payload)
+        }
+    }
+}
+
+fn deserialize_head<T: serde::de::DeserializeOwned>(head: &EntityHeadRecord) -> Result<T, String> {
+    bincode::deserialize(&head.payload)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
 }
 
 fn collect_text_ids(conn: &DbConnection, sql: &str) -> Result<Vec<String>, String> {

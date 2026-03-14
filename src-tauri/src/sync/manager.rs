@@ -13,7 +13,7 @@ use tokio_util::codec::Framed;
 
 use crate::sync::codec::P2PCodec;
 use crate::sync::db as sync_db;
-use crate::sync::protocol::{P2PMessage, SyncDomain, SyncManifest};
+use crate::sync::protocol::{P2PMessage, SyncDomain};
 use crate::utils::{log_error, log_info, log_warn};
 use std::path::Path;
 
@@ -198,12 +198,17 @@ async fn handle_driver_connection(
     let mut challenge = [0u8; 16];
     thread_rng().fill_bytes(&mut salt);
     thread_rng().fill_bytes(&mut challenge);
+    let device_id = {
+        let conn = crate::storage_manager::db::open_db(&app)?;
+        sync_db::get_or_create_local_device_id(&conn)?
+    };
 
     // Send Handshake
     framed
         .send(P2PMessage::Handshake {
             protocol_version: PROTOCOL_VERSION,
             device_name: whoami::devicename(),
+            device_id,
             salt,
             challenge,
         })
@@ -325,12 +330,13 @@ async fn handle_driver_connection(
     // Driver expects `Handshake`.
 
     // So after `set_key`, Driver should wait for `Handshake`.
-    let (device_name, peer_protocol_version) = match framed.next().await {
+    let (device_name, peer_device_id, peer_protocol_version) = match framed.next().await {
         Some(Ok(P2PMessage::Handshake {
             device_name,
+            device_id,
             protocol_version,
             ..
-        })) => (device_name, protocol_version),
+        })) => (device_name, device_id, protocol_version),
         Some(Ok(msg)) => {
             return Err(crate::utils::err_msg(
                 module_path!(),
@@ -446,8 +452,15 @@ async fn handle_driver_connection(
     // Main Loop
     while let Some(msg) = framed.next().await {
         match msg {
-            Ok(P2PMessage::SyncManifest { manifest }) => {
-                handle_sync_manifest(&app, &mut framed, manifest, peer_protocol_version).await?;
+            Ok(P2PMessage::AdvertiseCursors { cursors }) => {
+                handle_advertise_cursors(
+                    &app,
+                    &mut framed,
+                    &peer_device_id,
+                    cursors,
+                    peer_protocol_version,
+                )
+                .await?;
             }
             Ok(P2PMessage::Disconnect) => break,
             Ok(other) => log_warn(
@@ -462,14 +475,15 @@ async fn handle_driver_connection(
     Ok(())
 }
 
-async fn handle_sync_manifest(
+async fn handle_advertise_cursors(
     app: &AppHandle,
     framed: &mut Framed<TcpStream, P2PCodec>,
-    passenger_manifest: SyncManifest,
+    _peer_device_id: &str,
+    passenger_cursors: crate::sync::protocol::CursorSet,
     peer_protocol_version: u32,
 ) -> Result<(), String> {
-    let conn = crate::storage_manager::db::open_db(app)?;
-    let local_manifest = sync_db::build_sync_manifest(&conn)?;
+    let mut conn = crate::storage_manager::db::open_db(app)?;
+    sync_db::rebuild_change_log(&mut conn)?;
 
     if peer_protocol_version < PROTOCOL_VERSION {
         let warning = format!(
@@ -493,40 +507,32 @@ async fn handle_sync_manifest(
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     }
 
-    let passenger_map = passenger_manifest
-        .domains
-        .into_iter()
-        .map(|entry| (entry.domain, entry.fingerprint))
-        .collect::<std::collections::HashMap<_, _>>();
-    let domains_to_send = local_manifest
-        .domains
-        .iter()
-        .filter(|entry| passenger_map.get(&entry.domain) != Some(&entry.fingerprint))
-        .map(|entry| entry.domain)
-        .collect::<Vec<_>>();
+    let domains_to_send = passenger_cursors.cursors;
+    log_info(app, "sync_driver", "Sending incremental sync changes");
 
-    log_info(
-        app,
-        "sync_driver",
-        format!("Snapshot diff: {} domain(s) changed", domains_to_send.len()),
-    );
+    for cursor in domains_to_send {
+        let changes = sync_db::fetch_changes_since(&conn, cursor.domain, cursor.last_change_id)?;
+        if changes.is_empty() {
+            continue;
+        }
 
-    for domain in domains_to_send {
         framed
             .send(P2PMessage::StatusUpdate(
-                sync_status_text(domain).to_string(),
+                sync_status_text(cursor.domain).to_string(),
             ))
             .await
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
         tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
 
-        let payload = sync_db::fetch_domain_snapshot(&conn, domain)?;
         framed
-            .send(P2PMessage::DomainSnapshot { domain, payload })
+            .send(P2PMessage::PushChanges {
+                domain: cursor.domain,
+                changes,
+            })
             .await
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
-        send_domain_assets(app, framed, domain).await?;
+        send_domain_assets(app, framed, cursor.domain).await?;
     }
 
     framed
@@ -604,13 +610,14 @@ async fn run_passenger_session(
     let state = app.state::<SyncManagerState>();
 
     // 1. Wait for Handshake from Driver (contains Salt + Challenge)
-    let (salt, challenge, driver_protocol_version) = match framed.next().await {
+    let (salt, challenge, driver_device_id, driver_protocol_version) = match framed.next().await {
         Some(Ok(P2PMessage::Handshake {
             salt,
             challenge,
+            device_id,
             protocol_version,
             ..
-        })) => (salt, challenge, protocol_version),
+        })) => (salt, challenge, device_id, protocol_version),
         Some(Ok(msg)) => {
             return Err(crate::utils::err_msg(
                 module_path!(),
@@ -707,10 +714,13 @@ async fn run_passenger_session(
     framed.codec_mut().set_key(&key);
 
     // 5. Send our Handshake (Encrypted) with Device Name
+    let mut conn = crate::storage_manager::db::open_db(&app)?;
+    let local_device_id = sync_db::get_or_create_local_device_id(&conn)?;
     framed
         .send(P2PMessage::Handshake {
             protocol_version: PROTOCOL_VERSION,
             device_name: whoami::devicename(),
+            device_id: local_device_id,
             salt: [0u8; 16],      // Not used post-auth
             challenge: [0u8; 16], // Not used post-auth
         })
@@ -726,11 +736,10 @@ async fn run_passenger_session(
         )
         .await;
 
-    // Prepare Manifest
-    let mut conn = crate::storage_manager::db::open_db(&app)?;
-    let manifest = sync_db::build_sync_manifest(&conn)?;
+    sync_db::rebuild_change_log(&mut conn)?;
+    let cursors = sync_db::load_peer_cursors(&conn, &driver_device_id)?;
     framed
-        .send(P2PMessage::SyncManifest { manifest })
+        .send(P2PMessage::AdvertiseCursors { cursors })
         .await
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
@@ -769,10 +778,13 @@ async fn run_passenger_session(
             }
             msg = framed.next() => {
                 match msg {
-                    Some(Ok(P2PMessage::DomainSnapshot { domain, payload })) => {
-                        log_info(&app, "sync_passenger", format!("Received snapshot for domain: {:?}", domain));
-                        if let Err(e) = sync_db::apply_domain_snapshot(&mut conn, domain, &payload) {
+                    Some(Ok(P2PMessage::PushChanges { domain, changes })) => {
+                        log_info(&app, "sync_passenger", format!("Received {} changes for {:?}", changes.len(), domain));
+                        let last_change_id = changes.last().map(|change| change.change_id).unwrap_or(0);
+                        if let Err(e) = sync_db::apply_change_batch(&mut conn, domain, &changes) {
                             log_error(&app, "sync_passenger", format!("Failed to apply domain {:?}: {}", domain, e));
+                        } else if last_change_id > 0 {
+                            let _ = sync_db::record_peer_cursor(&conn, &driver_device_id, domain, last_change_id);
                         }
                     }
                     Some(Ok(P2PMessage::StatusUpdate(msg))) => {
