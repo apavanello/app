@@ -1,6 +1,7 @@
 import { motion, AnimatePresence, useDragControls, PanInfo } from "framer-motion";
 import { X, ChevronRight, LucideIcon, Loader2 } from "lucide-react";
 import { ReactNode, useCallback, useMemo, useEffect, useId, isValidElement } from "react";
+import { createPortal } from "react-dom";
 import { useI18n } from "../../core/i18n/context";
 
 const ICON_ACCENT_MAP: Record<string, string> = {
@@ -130,7 +131,7 @@ export function BottomMenu({
     ? "fixed bottom-0 left-0 right-0 rounded-t-3xl pb-[calc(env(safe-area-inset-bottom))]"
     : "fixed top-0 left-0 right-0 rounded-b-3xl";
 
-  return (
+  const menuContent = (
     <AnimatePresence>
       {isOpen && (
         <>
@@ -161,14 +162,14 @@ export function BottomMenu({
             aria-labelledby={titleId}
             {...(isBottomMenu
               ? {
-                drag: "y" as const,
-                dragControls,
-                dragListener: false,
-                dragConstraints: { top: 0, bottom: 200 }, // Reduced for better feel
-                dragElastic: { top: 0, bottom: 0.1 }, // Less elastic for snappier feel
-                dragMomentum: false,
-                onDragEnd: handleDragEnd,
-              }
+                  drag: "y" as const,
+                  dragControls,
+                  dragListener: false,
+                  dragConstraints: { top: 0, bottom: 200 }, // Reduced for better feel
+                  dragElastic: { top: 0, bottom: 0.1 }, // Less elastic for snappier feel
+                  dragMomentum: false,
+                  onDragEnd: handleDragEnd,
+                }
               : {})}
           >
             {isBottomMenu && (
@@ -213,6 +214,12 @@ export function BottomMenu({
       )}
     </AnimatePresence>
   );
+
+  if (typeof document === "undefined") {
+    return menuContent;
+  }
+
+  return createPortal(menuContent, document.body);
 }
 
 export function MenuButton({
