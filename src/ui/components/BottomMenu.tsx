@@ -1,6 +1,6 @@
 import { motion, AnimatePresence, useDragControls, PanInfo } from "framer-motion";
 import { X, ChevronRight, LucideIcon, Loader2 } from "lucide-react";
-import { ReactNode, useCallback, useMemo, useEffect, useId, isValidElement } from "react";
+import { ReactNode, useCallback, useMemo, useEffect, useId, isValidElement, useState } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../../core/i18n/context";
 
@@ -74,6 +74,7 @@ export function BottomMenu({
   const isBottomMenu = location === "bottom";
   const dragControls = useDragControls();
   const titleId = useId();
+  const [keyboardInset, setKeyboardInset] = useState(0);
 
   const handleDragEnd = useCallback(
     (_: unknown, info: PanInfo) => {
@@ -109,6 +110,40 @@ export function BottomMenu({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
 
+  useEffect(() => {
+    if (
+      !isOpen ||
+      !isBottomMenu ||
+      typeof window === "undefined" ||
+      typeof window.visualViewport === "undefined"
+    ) {
+      setKeyboardInset(0);
+      return;
+    }
+
+    const visualViewport = window.visualViewport;
+
+    const updateKeyboardInset = () => {
+      const baseHeight = window.innerHeight;
+      const viewportHeight = visualViewport?.height ?? baseHeight;
+      const viewportOffsetTop = visualViewport?.offsetTop ?? 0;
+      const nextInset = Math.max(0, baseHeight - viewportHeight - viewportOffsetTop);
+      setKeyboardInset(nextInset > 0 ? Math.round(nextInset) : 0);
+    };
+
+    updateKeyboardInset();
+    visualViewport?.addEventListener("resize", updateKeyboardInset);
+    visualViewport?.addEventListener("scroll", updateKeyboardInset);
+    window.addEventListener("orientationchange", updateKeyboardInset);
+
+    return () => {
+      visualViewport?.removeEventListener("resize", updateKeyboardInset);
+      visualViewport?.removeEventListener("scroll", updateKeyboardInset);
+      window.removeEventListener("orientationchange", updateKeyboardInset);
+      setKeyboardInset(0);
+    };
+  }, [isBottomMenu, isOpen]);
+
   const menuVariants = useMemo(
     () => ({
       hidden: {
@@ -130,6 +165,12 @@ export function BottomMenu({
   const menuClasses = isBottomMenu
     ? "fixed bottom-0 left-0 right-0 rounded-t-3xl pb-[calc(env(safe-area-inset-bottom))]"
     : "fixed top-0 left-0 right-0 rounded-b-3xl";
+  const bottomMenuStyle = isBottomMenu
+    ? {
+        bottom: `${keyboardInset}px`,
+        maxHeight: `calc(100dvh - env(safe-area-inset-top) - 8px - ${keyboardInset}px)`,
+      }
+    : undefined;
 
   const menuContent = (
     <AnimatePresence>
@@ -147,6 +188,7 @@ export function BottomMenu({
 
           <motion.div
             className={`${menuClasses} z-110 mx-auto max-w-xl border border-white/10 bg-[#0f1014] p-1 ${isBottomMenu ? "max-h-[90vh]" : "max-h-[95vh]"} overflow-hidden flex flex-col ${className}`}
+            style={bottomMenuStyle}
             variants={menuVariants}
             initial="hidden"
             animate="visible"
