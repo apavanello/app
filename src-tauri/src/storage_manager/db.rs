@@ -541,6 +541,8 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
           api_key TEXT,
           project_id TEXT,
           location TEXT DEFAULT 'us-central1',
+          base_url TEXT,
+          request_path TEXT,
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL
         );
@@ -1065,6 +1067,37 @@ pub fn init_db(_app: &tauri::AppHandle, conn: &Connection) -> Result<(), String>
     }
     if !has_memory_error {
         let _ = conn.execute("ALTER TABLE sessions ADD COLUMN memory_error TEXT", []);
+    }
+
+    let mut stmt_audio_providers = conn
+        .prepare("PRAGMA table_info(audio_providers)")
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let mut has_audio_base_url = false;
+    let mut has_audio_request_path = false;
+    let mut rows_audio_providers = stmt_audio_providers
+        .query([])
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    while let Some(row) = rows_audio_providers
+        .next()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
+    {
+        let col_name: String = row
+            .get(1)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        match col_name.as_str() {
+            "base_url" => has_audio_base_url = true,
+            "request_path" => has_audio_request_path = true,
+            _ => {}
+        }
+    }
+    if !has_audio_base_url {
+        let _ = conn.execute("ALTER TABLE audio_providers ADD COLUMN base_url TEXT", []);
+    }
+    if !has_audio_request_path {
+        let _ = conn.execute(
+            "ALTER TABLE audio_providers ADD COLUMN request_path TEXT",
+            [],
+        );
     }
 
     let mut stmt2 = conn

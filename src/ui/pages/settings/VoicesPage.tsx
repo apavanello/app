@@ -68,9 +68,26 @@ export function VoicesPage() {
     (CachedVoice & { provider: AudioProvider }) | null
   >(null);
   const editableProviders = providers.filter((provider) => provider.providerType !== "device_tts");
+  const libraryProviders = editableProviders.filter(
+    (provider) => provider.providerType !== "openai_tts",
+  );
   const isDeviceProvider = (provider: AudioProvider | null) =>
     !!provider &&
     (provider.providerType === "device_tts" || provider.id === DEVICE_TTS_PROVIDER_ID);
+
+  const getProviderTypeLabel = (providerType: AudioProviderType) => {
+    if (providerType === "gemini_tts") return "Gemini TTS";
+    if (providerType === "openai_tts") return "OpenAI-Compatible TTS";
+    if (providerType === "device_tts") return "Device TTS";
+    return "ElevenLabs";
+  };
+
+  const getProviderBadge = (providerType: AudioProviderType) => {
+    if (providerType === "gemini_tts") return "G";
+    if (providerType === "openai_tts") return "API";
+    if (providerType === "device_tts") return "OS";
+    return "11";
+  };
 
   // Separate custom voices (cloned, generated) from premade library voices
   const isCustomVoice = (voice: CachedVoice) => {
@@ -178,6 +195,7 @@ export function VoicesPage() {
       providerType: "elevenlabs",
       label: "",
       apiKey: "",
+      requestPath: "/v1/audio/speech",
     });
     setIsProviderEditorOpen(true);
   }, []);
@@ -253,22 +271,16 @@ export function VoicesPage() {
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full border border-fg/10 bg-fg/10">
-                    {provider.providerType === "gemini_tts" ? (
-                      <span className="text-xs">G</span>
-                    ) : provider.providerType === "device_tts" ? (
-                      <span className="text-[10px]">OS</span>
-                    ) : (
-                      <span className="text-xs">11</span>
-                    )}
+                    <span
+                      className={provider.providerType === "openai_tts" ? "text-[10px]" : "text-xs"}
+                    >
+                      {getProviderBadge(provider.providerType)}
+                    </span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="truncate text-sm font-medium text-fg">{provider.label}</p>
                     <p className="text-xs text-fg/50">
-                      {provider.providerType === "gemini_tts"
-                        ? "Gemini TTS"
-                        : provider.providerType === "device_tts"
-                          ? "Device TTS"
-                          : "ElevenLabs"}
+                      {getProviderTypeLabel(provider.providerType)}
                     </p>
                   </div>
                   <ChevronRight className="h-4 w-4 text-fg/30 group-hover:text-fg/60" />
@@ -361,7 +373,7 @@ export function VoicesPage() {
       </section>
 
       {/* Provider Voices Section */}
-      {editableProviders.length > 0 && (
+      {libraryProviders.length > 0 && (
         <section>
           <div className="mb-2 px-1">
             <h2 className="text-xs font-medium uppercase tracking-wider text-fg/40">
@@ -370,7 +382,7 @@ export function VoicesPage() {
           </div>
 
           <div className="space-y-4">
-            {editableProviders.map((provider) => {
+            {libraryProviders.map((provider) => {
               const voices = getPremadeVoices(provider.id);
               const isLoadingThis = loadingVoicesFor === provider.id;
               const isExpanded = expandedProviders[provider.id] ?? false;
@@ -381,11 +393,9 @@ export function VoicesPage() {
                   <div className="mb-2 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div className="flex h-6 w-6 items-center justify-center rounded-full border border-fg/10 bg-fg/10">
-                        {provider.providerType === "gemini_tts" ? (
-                          <span className="text-[10px]">G</span>
-                        ) : (
-                          <span className="text-[10px]">11</span>
-                        )}
+                        <span className="text-[10px]">
+                          {getProviderBadge(provider.providerType)}
+                        </span>
                       </div>
                       <span className="text-sm font-medium text-fg">{provider.label}</span>
                       <span className="text-xs text-fg/40">({voices.length} voices)</span>
@@ -784,9 +794,19 @@ function VoiceEditor({ isOpen, voice, providers, onClose, onSave }: VoiceEditorP
         finalVoiceData.voiceId = "kore";
       }
 
+      if (provider?.providerType === "openai_tts") {
+        if (!finalVoiceData.modelId.trim()) {
+          throw new Error("Model ID is required for OpenAI-compatible TTS.");
+        }
+        if (!finalVoiceData.voiceId.trim()) {
+          throw new Error("Voice ID is required for OpenAI-compatible TTS.");
+        }
+      }
+
       await onSave(finalVoiceData);
     } catch (e) {
       console.error("Failed to save voice:", e);
+      setPreviewError(e instanceof Error ? e.message : "Failed to save voice.");
     } finally {
       setIsSaving(false);
     }
@@ -886,7 +906,9 @@ function VoiceEditor({ isOpen, voice, providers, onClose, onSave }: VoiceEditorP
   const activeProvider = providers.find((p) => p.id === formData.providerId);
   const isNewVoice = !formData.id;
   const isElevenLabsVoiceDesign = activeProvider?.providerType === "elevenlabs" && isNewVoice;
-  const requiresVoiceId = activeProvider?.providerType === "elevenlabs" && !isElevenLabsVoiceDesign;
+  const allowsVoiceLookupByName =
+    activeProvider?.providerType === "elevenlabs" && !isElevenLabsVoiceDesign;
+  const requiresManualVoiceId = activeProvider?.providerType === "openai_tts";
   const sampleLength = textSample.trim().length;
   const previewDisabled =
     isPlaying ||
@@ -894,7 +916,9 @@ function VoiceEditor({ isOpen, voice, providers, onClose, onSave }: VoiceEditorP
     !textSample.trim() ||
     (isElevenLabsVoiceDesign && sampleLength < minVoiceDesignChars) ||
     (!isElevenLabsVoiceDesign &&
-      (!formData.modelId || (requiresVoiceId && !formData.voiceId && !formData.name.trim())));
+      (!formData.modelId ||
+        (requiresManualVoiceId && !formData.voiceId.trim()) ||
+        (allowsVoiceLookupByName && !formData.voiceId && !formData.name.trim())));
 
   return (
     <BottomMenu
@@ -931,27 +955,42 @@ function VoiceEditor({ isOpen, voice, providers, onClose, onSave }: VoiceEditorP
           </select>
         </div>
 
-        {/* Model Selection - shown for all providers */}
+        {/* Model Selection */}
         <div>
           <label className="mb-1 block text-[11px] font-medium text-fg/70">Model</label>
-          <select
-            value={formData.modelId}
-            onChange={(e) => setFormData({ ...formData, modelId: e.target.value })}
-            className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg focus:border-fg/30 focus:outline-none"
-            disabled={models.length === 0}
-          >
-            {models.length === 0 ? (
-              <option value="" className="bg-surface-el">
-                Loading models...
-              </option>
-            ) : (
-              models.map((m) => (
-                <option key={m.id} value={m.id} className="bg-surface-el">
-                  {m.name}
+          {activeProvider?.providerType === "openai_tts" ? (
+            <>
+              <input
+                type="text"
+                value={formData.modelId}
+                onChange={(e) => setFormData({ ...formData, modelId: e.target.value })}
+                placeholder="gpt-4o-mini-tts"
+                className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
+              />
+              <p className="mt-1 text-[10px] text-fg/40">
+                Enter the exact model ID your compatible endpoint expects
+              </p>
+            </>
+          ) : (
+            <select
+              value={formData.modelId}
+              onChange={(e) => setFormData({ ...formData, modelId: e.target.value })}
+              className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg focus:border-fg/30 focus:outline-none"
+              disabled={models.length === 0}
+            >
+              {models.length === 0 ? (
+                <option value="" className="bg-surface-el">
+                  Loading models...
                 </option>
-              ))
-            )}
-          </select>
+              ) : (
+                models.map((m) => (
+                  <option key={m.id} value={m.id} className="bg-surface-el">
+                    {m.name}
+                  </option>
+                ))
+              )}
+            </select>
+          )}
         </div>
 
         {activeProvider?.providerType === "elevenlabs" && !isElevenLabsVoiceDesign && (
@@ -1058,6 +1097,22 @@ function VoiceEditor({ isOpen, voice, providers, onClose, onSave }: VoiceEditorP
               </option>
             </select>
             <p className="mt-1 text-[10px] text-fg/40">Select a Gemini TTS voice</p>
+          </div>
+        )}
+
+        {activeProvider?.providerType === "openai_tts" && (
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-fg/70">Voice ID</label>
+            <input
+              type="text"
+              value={formData.voiceId}
+              onChange={(e) => setFormData({ ...formData, voiceId: e.target.value })}
+              placeholder="alloy"
+              className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
+            />
+            <p className="mt-1 text-[10px] text-fg/40">
+              Enter the voice ID supported by your compatible endpoint
+            </p>
           </div>
         )}
 
@@ -1172,6 +1227,11 @@ function ProviderEditor({ isOpen, provider, onClose, onSave }: ProviderEditorPro
       return;
     }
 
+    if (formData.providerType === "openai_tts" && !formData.baseUrl?.trim()) {
+      setValidationError("Base URL is required for OpenAI-compatible TTS");
+      return;
+    }
+
     setIsSaving(true);
     setValidationError(null);
 
@@ -1215,6 +1275,8 @@ function ProviderEditor({ isOpen, provider, onClose, onSave }: ProviderEditorPro
                 providerType: e.target.value as AudioProviderType,
                 projectId: undefined,
                 location: undefined,
+                baseUrl: undefined,
+                requestPath: e.target.value === "openai_tts" ? "/v1/audio/speech" : undefined,
               })
             }
             className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg focus:border-fg/30 focus:outline-none"
@@ -1224,6 +1286,9 @@ function ProviderEditor({ isOpen, provider, onClose, onSave }: ProviderEditorPro
             </option>
             <option value="gemini_tts" className="bg-surface-el">
               Gemini TTS (Google)
+            </option>
+            <option value="openai_tts" className="bg-surface-el">
+              OpenAI-Compatible TTS
             </option>
           </select>
         </div>
@@ -1235,7 +1300,13 @@ function ProviderEditor({ isOpen, provider, onClose, onSave }: ProviderEditorPro
             type="text"
             value={formData.label}
             onChange={(e) => setFormData({ ...formData, label: e.target.value })}
-            placeholder={formData.providerType === "gemini_tts" ? "My Gemini TTS" : "My ElevenLabs"}
+            placeholder={
+              formData.providerType === "gemini_tts"
+                ? "My Gemini TTS"
+                : formData.providerType === "openai_tts"
+                  ? "My Compatible TTS"
+                  : "My ElevenLabs"
+            }
             className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
           />
         </div>
@@ -1284,6 +1355,37 @@ function ProviderEditor({ isOpen, provider, onClose, onSave }: ProviderEditorPro
                 placeholder="us-central1"
                 className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
               />
+            </div>
+          </>
+        )}
+
+        {formData.providerType === "openai_tts" && (
+          <>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-fg/70">Base URL</label>
+              <input
+                type="text"
+                value={formData.baseUrl ?? ""}
+                onChange={(e) => {
+                  setFormData({ ...formData, baseUrl: e.target.value });
+                  if (validationError) setValidationError(null);
+                }}
+                placeholder="https://api.example.com"
+                className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-fg/70">Request Path</label>
+              <input
+                type="text"
+                value={formData.requestPath ?? "/v1/audio/speech"}
+                onChange={(e) => setFormData({ ...formData, requestPath: e.target.value })}
+                placeholder="/v1/audio/speech"
+                className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
+              />
+              <p className="mt-1 text-[10px] text-fg/40">
+                Use the provider path if it differs from the OpenAI default
+              </p>
             </div>
           </>
         )}

@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { speak, stop, getVoices, isSpeaking } from "tauri-plugin-tts-api";
 
-export type AudioProviderType = "gemini_tts" | "elevenlabs" | "device_tts";
+export type AudioProviderType = "gemini_tts" | "elevenlabs" | "openai_tts" | "device_tts";
 
 export const DEVICE_TTS_PROVIDER_ID = "device_tts";
 const DEVICE_TTS_LABEL = "Device TTS";
@@ -13,6 +13,8 @@ export interface AudioProvider {
   apiKey?: string;
   projectId?: string; // Gemini only
   location?: string; // Gemini only
+  baseUrl?: string; // OpenAI-compatible TTS only
+  requestPath?: string; // OpenAI-compatible TTS only
   createdAt?: number;
   updatedAt?: number;
   isSystem?: boolean;

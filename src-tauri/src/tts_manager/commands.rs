@@ -7,7 +7,7 @@ use super::types::{
     AudioModel, AudioProvider, AudioProviderType, CachedVoice, CreatedVoiceResult,
     TtsPreviewResponse, UserVoice, VoiceDesignPreview,
 };
-use super::{elevenlabs, gemini};
+use super::{elevenlabs, gemini, openai_compatible};
 use crate::abort_manager::AbortRegistry;
 use crate::storage_manager::db::{now_ms, open_db};
 
@@ -17,7 +17,7 @@ pub fn audio_provider_list(app: AppHandle) -> Result<Vec<AudioProvider>, String>
     let conn = open_db(&app)?;
     let mut stmt = conn
         .prepare(
-            "SELECT id, provider_type, label, api_key, project_id, location, created_at, updated_at
+            "SELECT id, provider_type, label, api_key, project_id, location, base_url, request_path, created_at, updated_at
              FROM audio_providers ORDER BY created_at DESC",
         )
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -31,8 +31,10 @@ pub fn audio_provider_list(app: AppHandle) -> Result<Vec<AudioProvider>, String>
                 api_key: row.get(3)?,
                 project_id: row.get(4)?,
                 location: row.get(5)?,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
+                base_url: row.get(6)?,
+                request_path: row.get(7)?,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
             })
         })
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
@@ -65,16 +67,20 @@ pub fn audio_provider_upsert(
         .location
         .clone()
         .unwrap_or_else(|| "us-central1".to_string());
+    let base_url = provider.base_url.clone();
+    let request_path = provider.request_path.clone();
 
     conn.execute(
-        "INSERT INTO audio_providers (id, provider_type, label, api_key, project_id, location, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+        "INSERT INTO audio_providers (id, provider_type, label, api_key, project_id, location, base_url, request_path, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
          ON CONFLICT(id) DO UPDATE SET
             provider_type = excluded.provider_type,
             label = excluded.label,
             api_key = excluded.api_key,
             project_id = excluded.project_id,
             location = excluded.location,
+            base_url = excluded.base_url,
+            request_path = excluded.request_path,
             updated_at = excluded.updated_at",
         params![
             id,
@@ -83,6 +89,8 @@ pub fn audio_provider_upsert(
             provider.api_key,
             provider.project_id,
             location,
+            base_url,
+            request_path,
             now
         ],
     )
@@ -95,6 +103,8 @@ pub fn audio_provider_upsert(
         api_key: provider.api_key,
         project_id: provider.project_id,
         location: provider.location,
+        base_url: provider.base_url,
+        request_path: provider.request_path,
         created_at: now,
         updated_at: now,
     })
@@ -115,6 +125,7 @@ pub fn audio_models_list(provider_type: String) -> Vec<AudioModel> {
     match AudioProviderType::from_str(&provider_type) {
         Some(AudioProviderType::GeminiTts) => gemini::get_models(),
         Some(AudioProviderType::Elevenlabs) => elevenlabs::get_models(),
+        Some(AudioProviderType::OpenAiTts) => openai_compatible::default_models(),
         None => vec![],
     }
 }
@@ -124,6 +135,7 @@ pub fn audio_voice_design_models_list(provider_type: String) -> Vec<AudioModel> 
     match AudioProviderType::from_str(&provider_type) {
         Some(AudioProviderType::GeminiTts) => gemini::get_models(),
         Some(AudioProviderType::Elevenlabs) => elevenlabs::get_voice_design_models(),
+        Some(AudioProviderType::OpenAiTts) => openai_compatible::default_models(),
         None => vec![],
     }
 }
@@ -166,6 +178,10 @@ pub fn audio_provider_voices(
                 cached_at: now,
             })
             .collect());
+    }
+
+    if provider_type == "openai_tts" {
+        return Ok(Vec::new());
     }
 
     // For ElevenLabs, return cached voices
@@ -226,6 +242,10 @@ pub async fn audio_provider_refresh_voices(
     // Gemini uses hardcoded voices
     if provider_type == "gemini_tts" {
         return audio_provider_voices(app, provider_id);
+    }
+
+    if provider_type == "openai_tts" {
+        return Ok(Vec::new());
     }
 
     // ElevenLabs - fetch from API
@@ -370,16 +390,18 @@ pub async fn tts_preview(
     let conn = open_db(&app)?;
 
     // Get provider details
-    let (provider_type, api_key, project_id, location): (
+    let (provider_type, api_key, project_id, location, base_url, request_path): (
         String,
+        Option<String>,
+        Option<String>,
         Option<String>,
         Option<String>,
         Option<String>,
     ) = conn
         .query_row(
-            "SELECT provider_type, api_key, project_id, location FROM audio_providers WHERE id = ?",
+            "SELECT provider_type, api_key, project_id, location, base_url, request_path FROM audio_providers WHERE id = ?",
             params![provider_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
         )
         .map_err(|e| {
             crate::utils::err_msg(
@@ -417,6 +439,19 @@ pub async fn tts_preview(
                 let data =
                     elevenlabs::generate_speech(&text, &voice_id, &model_id, &api_key).await?;
                 Ok((data, "audio/mpeg".to_string()))
+            }
+            "openai_tts" => {
+                let base_url = base_url.ok_or("Base URL required for OpenAI-compatible TTS")?;
+                openai_compatible::generate_speech(
+                    &base_url,
+                    request_path.as_deref(),
+                    &api_key,
+                    &text,
+                    &voice_id,
+                    &model_id,
+                    prompt.as_deref(),
+                )
+                .await
             }
             _ => Err(crate::utils::err_msg(
                 module_path!(),
@@ -471,6 +506,7 @@ pub async fn audio_provider_verify(
             gemini::verify_api_key(&api_key, &project_id).await
         }
         "elevenlabs" => elevenlabs::verify_api_key(&api_key).await,
+        "openai_tts" => Ok(true),
         _ => Err(crate::utils::err_msg(
             module_path!(),
             line!(),
@@ -501,6 +537,10 @@ pub async fn audio_provider_search_voices(
                 format!("Provider not found: {}", e),
             )
         })?;
+
+    if provider_type == "openai_tts" {
+        return Ok(Vec::new());
+    }
 
     if provider_type != "elevenlabs" {
         return Err(crate::utils::err_msg(

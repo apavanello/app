@@ -1726,8 +1726,8 @@ fn apply_tts_snapshot(conn: &mut DbConnection, payload: &[u8]) -> Result<(), Str
         .collect::<Vec<_>>();
     for provider in snapshot.audio_providers {
         tx.execute(
-            r#"INSERT OR REPLACE INTO audio_providers (id, provider_type, label, api_key, project_id, location, created_at, updated_at)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"#,
+            r#"INSERT OR REPLACE INTO audio_providers (id, provider_type, label, api_key, project_id, location, base_url, request_path, created_at, updated_at)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"#,
             params![
                 provider.id,
                 provider.provider_type,
@@ -1735,6 +1735,8 @@ fn apply_tts_snapshot(conn: &mut DbConnection, payload: &[u8]) -> Result<(), Str
                 provider.api_key,
                 provider.project_id,
                 provider.location,
+                provider.base_url,
+                provider.request_path,
                 provider.created_at,
                 provider.updated_at
             ],
@@ -2534,7 +2536,7 @@ fn fetch_global_core(conn: &DbConnection) -> Result<GlobalCoreData, String> {
         .collect();
 
     let mut stmt = conn
-        .prepare("SELECT id, provider_type, label, api_key, project_id, location, created_at, updated_at FROM audio_providers")
+        .prepare("SELECT id, provider_type, label, api_key, project_id, location, base_url, request_path, created_at, updated_at FROM audio_providers")
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     let audio_providers: Vec<AudioProvider> = stmt
         .query_map([], |r| {
@@ -2545,8 +2547,10 @@ fn fetch_global_core(conn: &DbConnection) -> Result<GlobalCoreData, String> {
                 api_key: r.get(3)?,
                 project_id: r.get(4)?,
                 location: r.get(5)?,
-                created_at: r.get(6)?,
-                updated_at: r.get(7)?,
+                base_url: r.get(6)?,
+                request_path: r.get(7)?,
+                created_at: r.get(8)?,
+                updated_at: r.get(9)?,
             })
         })
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?

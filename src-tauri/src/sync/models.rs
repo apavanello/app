@@ -123,6 +123,8 @@ pub struct AudioProvider {
     pub api_key: Option<String>,
     pub project_id: Option<String>,
     pub location: Option<String>,
+    pub base_url: Option<String>,
+    pub request_path: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
