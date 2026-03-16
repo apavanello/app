@@ -657,11 +657,16 @@ fn configure_onnxruntime_dylib(app: &tauri::AppHandle) {
             "libonnxruntime.so"
         };
 
-        match app
-            .path()
-            .resolve(format!("onnxruntime/{}", lib_name), BaseDirectory::Resource)
-        {
-            Ok(path) => {
+        let candidates = [format!("onnxruntime/{}", lib_name), lib_name.to_string()];
+        let resolved_path = candidates.into_iter().find_map(|candidate| {
+            app.path()
+                .resolve(candidate, BaseDirectory::Resource)
+                .ok()
+                .filter(|path| path.exists())
+        });
+
+        match resolved_path {
+            Some(path) => {
                 if path.exists() {
                     std::env::set_var("ORT_DYLIB_PATH", &path);
                     let _ = ort::util::preload_dylib(&path);
@@ -678,11 +683,14 @@ fn configure_onnxruntime_dylib(app: &tauri::AppHandle) {
                     );
                 }
             }
-            Err(err) => {
+            None => {
                 utils::log_warn(
                     app,
                     "embedding_debug",
-                    format!("Failed to resolve ONNX Runtime resource path: {}", err),
+                    format!(
+                        "Failed to resolve ONNX Runtime resource path for {} in bundled resources",
+                        lib_name
+                    ),
                 );
             }
         }

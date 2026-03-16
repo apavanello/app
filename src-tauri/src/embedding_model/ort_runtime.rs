@@ -4,6 +4,8 @@ use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
+use tauri::path::BaseDirectory;
+use tauri::Manager;
 
 pub(super) async fn ensure_ort_init(app: &AppHandle) -> Result<(), String> {
     if ORT_INITIALIZED.load(Ordering::Acquire) {
@@ -107,31 +109,8 @@ async fn resolve_or_download_onnxruntime(app: &AppHandle) -> Result<PathBuf, Str
                     }
                 } else if cfg!(target_os = "macos") {
                     if let Some(ort_dir) = path.parent() {
-                        let shared = ort_dir.join("libonnxruntime_providers_shared.dylib");
-                        if !shared.exists() {
-                            crate::utils::log_warn(
-                                app,
-                                "embedding_debug",
-                                format!(
-                                    "ORT_DYLIB_PATH is set to {} but provider shared dylib is missing; attempting runtime download fallback.",
-                                    path.display()
-                                ),
-                            );
-                        } else {
-                            let coreml = ort_dir.join("libonnxruntime_providers_coreml.dylib");
-                            if !coreml.exists() {
-                                crate::utils::log_warn(
-                                    app,
-                                    "embedding_debug",
-                                    format!(
-                                        "ORT_DYLIB_PATH is set to {} but CoreML provider dylib is missing; attempting runtime download fallback.",
-                                        path.display()
-                                    ),
-                                );
-                            } else {
-                                return Ok(path.to_path_buf());
-                            }
-                        }
+                        log_missing_macos_provider_dylibs(app, ort_dir, path);
+                        return Ok(path.to_path_buf());
                     } else {
                         crate::utils::log_warn(
                             app,
@@ -149,6 +128,21 @@ async fn resolve_or_download_onnxruntime(app: &AppHandle) -> Result<PathBuf, Str
         }
     }
 
+    if let Some(path) = resolve_bundled_onnxruntime(app) {
+        std::env::set_var("ORT_DYLIB_PATH", &path);
+        if cfg!(target_os = "macos") {
+            if let Some(ort_dir) = path.parent() {
+                log_missing_macos_provider_dylibs(app, ort_dir, &path);
+            }
+        }
+        log_info(
+            app,
+            "embedding_debug",
+            format!("Using bundled ONNX Runtime from {}", path.display()),
+        );
+        return Ok(path);
+    }
+
     let lettuce_dir = crate::utils::ensure_lettuce_dir(app)?;
     let ort_dir = lettuce_dir.join("onnxruntime");
     fs::create_dir_all(&ort_dir)
@@ -163,31 +157,8 @@ async fn resolve_or_download_onnxruntime(app: &AppHandle) -> Result<PathBuf, Str
                 return Ok(dest_path);
             }
         } else if cfg!(target_os = "macos") {
-            let shared = ort_dir.join("libonnxruntime_providers_shared.dylib");
-            if !shared.exists() {
-                crate::utils::log_warn(
-                    app,
-                    "embedding_debug",
-                    format!(
-                        "Bundled ONNX Runtime found at {} but provider shared dylib is missing; attempting runtime download fallback.",
-                        dest_path.display()
-                    ),
-                );
-            } else {
-                let coreml = ort_dir.join("libonnxruntime_providers_coreml.dylib");
-                if !coreml.exists() {
-                    crate::utils::log_warn(
-                        app,
-                        "embedding_debug",
-                        format!(
-                            "Bundled ONNX Runtime found at {} but CoreML provider dylib is missing; attempting runtime download fallback.",
-                            dest_path.display()
-                        ),
-                    );
-                } else {
-                    return Ok(dest_path);
-                }
-            }
+            log_missing_macos_provider_dylibs(app, &ort_dir, &dest_path);
+            return Ok(dest_path);
         } else {
             return Ok(dest_path);
         }
@@ -446,6 +417,66 @@ fn preload_macos_provider_dylibs(ort_dir: &Path) {
             let _ = ort::util::preload_dylib(&path);
         }
     }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn log_missing_macos_provider_dylibs(app: &AppHandle, ort_dir: &Path, dylib_path: &Path) {
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, ort_dir, dylib_path);
+        return;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let shared = ort_dir.join("libonnxruntime_providers_shared.dylib");
+        if !shared.exists() {
+            crate::utils::log_warn(
+            app,
+            "embedding_debug",
+            format!(
+                "ONNX Runtime found at {} but provider shared dylib is missing; embeddings may rely on runtime-fetched providers.",
+                dylib_path.display()
+            ),
+        );
+        }
+
+        let coreml = ort_dir.join("libonnxruntime_providers_coreml.dylib");
+        if !coreml.exists() {
+            crate::utils::log_warn(
+            app,
+            "embedding_debug",
+            format!(
+                "ONNX Runtime found at {} but CoreML provider dylib is missing; embeddings will fall back to CPU.",
+                dylib_path.display()
+            ),
+        );
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn resolve_bundled_onnxruntime(app: &AppHandle) -> Option<PathBuf> {
+    let lib_name = if cfg!(target_os = "windows") {
+        "onnxruntime.dll"
+    } else if cfg!(target_os = "macos") {
+        "libonnxruntime.dylib"
+    } else {
+        "libonnxruntime.so"
+    };
+
+    let candidates = [format!("onnxruntime/{}", lib_name), lib_name.to_string()];
+
+    for candidate in candidates {
+        let Ok(path) = app.path().resolve(&candidate, BaseDirectory::Resource) else {
+            continue;
+        };
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    None
 }
 
 trait IntoInitResult {
