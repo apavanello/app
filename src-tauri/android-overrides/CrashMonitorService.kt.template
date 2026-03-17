@@ -264,6 +264,7 @@ private class CrashMonitorRepository(private val context: Context) {
       .asSequence()
       .filter { it.processName != null && !it.processName.endsWith(":monitor") }
       .filter { it.timestamp > lastProcessedTimestamp }
+      .filter { shouldReportExitReason(it.reason) }
       .sortedBy { it.timestamp }
       .forEach { info ->
         val traceText = runCatching {
@@ -522,6 +523,21 @@ private class CrashMonitorRepository(private val context: Context) {
       android.app.ApplicationExitInfo.REASON_CRASH_NATIVE -> "Native crash in Rust, WebView, or native dependency"
       android.app.ApplicationExitInfo.REASON_SIGNALED -> description ?: "Process terminated by signal"
       else -> description ?: "No explicit cause available"
+    }
+  }
+
+  private fun shouldReportExitReason(reason: Int): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+    return when (reason) {
+      android.app.ApplicationExitInfo.REASON_ANR,
+      android.app.ApplicationExitInfo.REASON_CRASH,
+      android.app.ApplicationExitInfo.REASON_CRASH_NATIVE,
+      android.app.ApplicationExitInfo.REASON_DEPENDENCY_DIED,
+      android.app.ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE,
+      android.app.ApplicationExitInfo.REASON_INITIALIZATION_FAILURE,
+      android.app.ApplicationExitInfo.REASON_LOW_MEMORY,
+      android.app.ApplicationExitInfo.REASON_SIGNALED -> true
+      else -> false
     }
   }
 
