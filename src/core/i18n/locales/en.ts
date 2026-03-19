@@ -141,6 +141,7 @@ export const enMessages = {
     items: {
       providers: { title: "Providers", subtitle: "Connect to AI services" },
       models: { title: "Models", subtitle: "Configure AI models" },
+      imageGeneration: { title: "Image Generation", subtitle: "Generate and test images" },
       voices: { title: "Voices", subtitle: "Text-to-speech voices" },
       accessibility: { title: "Accessibility", subtitle: "Sound cues & haptics" },
       prompts: { title: "System Prompts", subtitle: "Shape AI personality" },
@@ -1783,10 +1784,26 @@ export const enMessages = {
       size: "SIZE",
       quality: "QUALITY",
       style: "STYLE",
+      searchModels: "Search models...",
+      selectAvatarModel: "Select Avatar Model",
+      selectSceneModel: "Select Scene Model",
+      useFirstAvailable: "Use first available model",
     },
     empty: {
       title: "No Image Models",
       description: "Add an image generation model from the Models page to start generating images.",
+    },
+    sections: {
+      avatar: {
+        title: "Avatar Generation",
+        description:
+          "Default model used when generating avatars from the avatar picker or related profile image flows.",
+      },
+      scene: {
+        title: "Scene Generation",
+        description:
+          "Reserved model for scene images generated from conversation context or scene prompts.",
+      },
     },
   },
 

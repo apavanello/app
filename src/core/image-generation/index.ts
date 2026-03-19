@@ -70,10 +70,16 @@ export interface ImageGenerationOptions {
   defaultProvider: ProviderCredential | null;
 }
 
-export function resolveImageGenerationOptions(settings: Settings): ImageGenerationOptions {
+function resolveImageGenerationOptionsWithPreference(
+  settings: Settings,
+  preferredModelId?: string | null,
+): ImageGenerationOptions {
   const models = settings.models.filter((model) => model.outputScopes?.includes("image"));
   const providers = settings.providerCredentials;
-  const defaultModel = models[0] ?? null;
+  const defaultModel =
+    (preferredModelId ? models.find((model) => model.id === preferredModelId) : null) ??
+    models[0] ??
+    null;
   const defaultProvider = defaultModel
     ? resolveProviderCredential(providers, defaultModel.providerId, defaultModel.providerLabel)
     : null;
@@ -84,6 +90,24 @@ export function resolveImageGenerationOptions(settings: Settings): ImageGenerati
     defaultModel,
     defaultProvider,
   };
+}
+
+export function resolveImageGenerationOptions(settings: Settings): ImageGenerationOptions {
+  return resolveImageGenerationOptionsWithPreference(settings);
+}
+
+export function resolveAvatarGenerationOptions(settings: Settings): ImageGenerationOptions {
+  return resolveImageGenerationOptionsWithPreference(
+    settings,
+    settings.advancedSettings?.avatarGenerationModelId,
+  );
+}
+
+export function resolveSceneGenerationOptions(settings: Settings): ImageGenerationOptions {
+  return resolveImageGenerationOptionsWithPreference(
+    settings,
+    settings.advancedSettings?.sceneGenerationModelId,
+  );
 }
 
 export function resolveProviderCredential(

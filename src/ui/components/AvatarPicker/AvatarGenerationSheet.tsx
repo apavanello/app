@@ -10,7 +10,7 @@ import {
   type ImageGenerationRequest,
   type GeneratedImage,
   resolveGeneratedImageUrl,
-  resolveImageGenerationOptions,
+  resolveAvatarGenerationOptions,
   resolveProviderCredential,
 } from "../../../core/image-generation";
 import { readSettings } from "../../../core/storage/repo";
@@ -49,7 +49,7 @@ export function AvatarGenerationSheet({
       try {
         setLoading(true);
         const settings = await readSettings();
-        const options = resolveImageGenerationOptions(settings);
+        const options = resolveAvatarGenerationOptions(settings);
 
         setModels(options.models);
         setProviders(options.providers);

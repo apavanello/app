@@ -145,6 +145,10 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
     items: {
       providers: { title: "Mga Provider", subtitle: "Kumonekta sa mga serbisyo ng AI" },
       models: { title: "Mga Modelo", subtitle: "I-configure ang mga modelo ng AI" },
+      imageGeneration: {
+        title: "Paglikha ng Larawan",
+        subtitle: "Gumawa at subukan ang mga larawan",
+      },
       voices: { title: "Mga Boses", subtitle: "Mga boses ng text-to-speech" },
       accessibility: { title: "Accessibility", subtitle: "Mga tunog at haptic" },
       prompts: { title: "Mga System Prompt", subtitle: "Hubugin ang personalidad ng AI" },
@@ -1820,11 +1824,27 @@ export const filMessages: DeepPartialMessageTree<LocaleMessages> = {
       size: "LAKI",
       quality: "KALIDAD",
       style: "ESTILO",
+      searchModels: "Maghanap ng mga modelo...",
+      selectAvatarModel: "Pumili ng Avatar Model",
+      selectSceneModel: "Pumili ng Scene Model",
+      useFirstAvailable: "Gamitin ang unang available na modelo",
     },
     empty: {
       title: "Walang mga Modelo ng Larawan",
       description:
         "Magdagdag ng modelo ng paglikha ng larawan mula sa pahina ng Mga Modelo para magsimulang gumawa ng mga larawan.",
+    },
+    sections: {
+      avatar: {
+        title: "Paglikha ng Avatar",
+        description:
+          "Default na modelong gagamitin kapag gumagawa ng avatar mula sa avatar picker o kaugnay na profile image flows.",
+      },
+      scene: {
+        title: "Paglikha ng Scene",
+        description:
+          "Nakatalagang modelo para sa mga scene image na bubuuin mula sa konteksto ng usapan o scene prompts.",
+      },
     },
   },
 

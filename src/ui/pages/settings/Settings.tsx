@@ -20,6 +20,7 @@ import {
   Accessibility,
   HelpCircle,
   ArrowLeftRight,
+  Image,
 } from "lucide-react";
 import { typography, radius, spacing, interactive, cn } from "../../design-tokens";
 import { useSettingsSummary } from "./hooks/useSettingsSummary";
@@ -173,6 +174,14 @@ export function SettingsPage() {
         count: modelCount,
         tone: "intelligence" as const,
         onClick: () => toModelsList(),
+      },
+      {
+        key: "imageGeneration",
+        icon: <Image />,
+        title: t("settings.items.imageGeneration.title"),
+        subtitle: t("settings.items.imageGeneration.subtitle"),
+        tone: "intelligence" as const,
+        onClick: () => navigate("/settings/image-generation"),
       },
       {
         key: "voices",
@@ -373,7 +382,9 @@ export function SettingsPage() {
           </h2>
           <div className={spacing.field}>
             {items
-              .filter((i) => ["providers", "models", "prompts", "advanced"].includes(i.key))
+              .filter((i) =>
+                ["providers", "models", "imageGeneration", "prompts", "advanced"].includes(i.key),
+              )
               .map((item) => (
                 <Row
                   key={item.key}

@@ -143,6 +143,8 @@ fn default_settings() -> Settings {
         advanced_model_settings: AdvancedModelSettings::default(),
         advanced_settings: Some(AdvancedSettings {
             summarisation_model_id: None,
+            avatar_generation_model_id: None,
+            scene_generation_model_id: None,
             creation_helper_enabled: None,
             creation_helper_model_id: None,
             help_me_reply_enabled: None,

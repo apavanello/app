@@ -2059,6 +2059,8 @@ export const SettingsSchema = z.object({
   advancedSettings: z
     .object({
       summarisationModelId: z.string().optional(),
+      avatarGenerationModelId: z.string().optional(),
+      sceneGenerationModelId: z.string().optional(),
       creationHelperEnabled: z.boolean().optional(),
       creationHelperModelId: z.string().optional(),
       creationHelperStreaming: z.boolean().optional(),

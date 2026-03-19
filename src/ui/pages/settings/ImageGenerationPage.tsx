@@ -1,87 +1,174 @@
-import { useState, useCallback, useEffect } from "react";
-import { Image, Loader2, Download, Sparkles, AlertCircle, ChevronDown } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useEffect, useMemo, useState } from "react";
+import { Check, ChevronDown, Image, LucideIcon, Sparkles } from "lucide-react";
 
-import {
-  generateImage,
-  getModelSizes,
-  type ImageGenerationRequest,
-  type GeneratedImage,
-  resolveGeneratedImageUrl,
-  resolveImageGenerationOptions,
-  resolveProviderCredential,
-} from "../../../core/image-generation";
-import { readSettings } from "../../../core/storage/repo";
-import type { Model, ProviderCredential } from "../../../core/storage/schemas";
+import { BottomMenu } from "../../components/BottomMenu";
+import { resolveImageGenerationOptions } from "../../../core/image-generation";
+import { readSettings, saveAdvancedSettings } from "../../../core/storage/repo";
+import type { Model } from "../../../core/storage/schemas";
 import { useI18n } from "../../../core/i18n/context";
+import { getProviderIcon } from "../../../core/utils/providerIcons";
+import { cn } from "../../design-tokens";
 
 interface ImageGenerationState {
   loading: boolean;
-  generating: boolean;
   error: string | null;
   models: Model[];
-  providers: ProviderCredential[];
-  selectedModel: Model | null;
-  selectedProvider: ProviderCredential | null;
-  generatedImages: GeneratedImage[];
+  avatarModelId: string | null;
+  sceneModelId: string | null;
 }
 
-function GeneratedImageCard({ image, index }: { image: GeneratedImage; index: number }) {
-  const [src, setSrc] = useState<string | null>(null);
+type SelectorKey = "avatarModelId" | "sceneModelId";
 
-  useEffect(() => {
-    let cancelled = false;
+type SelectorCardProps = {
+  title: string;
+  description: string;
+  selectedModel: Model | null;
+  fallbackLabel: string;
+  icon: LucideIcon;
+  accentClassName: string;
+  onClick: () => void;
+};
 
-    void resolveGeneratedImageUrl(image)
-      .then((url) => {
-        if (!cancelled) {
-          setSrc(url ?? null);
-        }
-      })
-      .catch((err) => {
-        console.error("Failed to resolve generated image:", err);
-        if (!cancelled) {
-          setSrc(null);
-        }
-      });
+function SelectorCard({
+  title,
+  description,
+  selectedModel,
+  fallbackLabel,
+  icon: Icon,
+  accentClassName,
+  onClick,
+}: SelectorCardProps) {
+  return (
+    <section className="space-y-3 rounded-xl border border-fg/10 bg-fg/5 px-4 py-4">
+      <div className="flex items-start gap-3">
+        <div className={cn("rounded-lg border p-1.5", accentClassName)}>
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold text-fg">{title}</h2>
+          <p className="mt-1 text-xs leading-relaxed text-fg/45">{description}</p>
+        </div>
+      </div>
 
-    return () => {
-      cancelled = true;
-    };
-  }, [image]);
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex w-full items-center justify-between rounded-xl border border-fg/10 bg-surface-el/20 px-3.5 py-3 text-left transition hover:bg-surface-el/30 focus:border-fg/25 focus:outline-none"
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          {selectedModel ? getProviderIcon(selectedModel.providerId) : <Icon className="h-5 w-5 text-fg/40" />}
+          <div className="min-w-0">
+            <span className={cn("block truncate text-sm", selectedModel ? "text-fg" : "text-fg/50")}>
+              {selectedModel?.displayName || selectedModel?.name || fallbackLabel}
+            </span>
+            {selectedModel && (
+              <span className="block truncate text-xs text-fg/40">{selectedModel.name}</span>
+            )}
+          </div>
+        </div>
+        <ChevronDown className="h-4 w-4 shrink-0 text-fg/40" />
+      </button>
+    </section>
+  );
+}
+
+type ModelSelectionMenuProps = {
+  isOpen: boolean;
+  title: string;
+  models: Model[];
+  selectedModelId: string | null;
+  searchQuery: string;
+  emptyLabel: string;
+  fallbackLabel: string;
+  onClose: () => void;
+  onSearchChange: (value: string) => void;
+  onSelect: (modelId: string | null) => void;
+};
+
+function ModelSelectionMenu({
+  isOpen,
+  title,
+  models,
+  selectedModelId,
+  searchQuery,
+  emptyLabel,
+  fallbackLabel,
+  onClose,
+  onSearchChange,
+  onSelect,
+}: ModelSelectionMenuProps) {
+  const filteredModels = useMemo(() => {
+    if (!searchQuery) return models;
+    const q = searchQuery.toLowerCase();
+    return models.filter(
+      (model) =>
+        model.displayName?.toLowerCase().includes(q) || model.name?.toLowerCase().includes(q),
+    );
+  }, [models, searchQuery]);
 
   return (
-    <div className="relative group rounded-xl overflow-hidden border border-fg/10 bg-fg/5">
-      {src ? (
-        <img
-          src={src}
-          alt={`Generated image ${index + 1}`}
-          className="w-full aspect-square object-cover"
-          loading="lazy"
-        />
-      ) : (
-        <div className="w-full aspect-square flex items-center justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-fg/40" />
-        </div>
-      )}
-      {image.text && (
-        <div className="absolute bottom-0 left-0 right-0 bg-surface-el/70 px-2 py-1 text-xs text-fg/70 truncate">
-          {image.text}
-        </div>
-      )}
-      {src ? (
-        <div className="absolute inset-0 bg-surface-el/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <button
-            onClick={() => {
-              window.open(src, "_blank");
-            }}
-            className="rounded-full bg-fg/20 p-2 hover:bg-fg/30 transition"
+    <BottomMenu isOpen={isOpen} onClose={onClose} title={title}>
+      <div className="space-y-4">
+        <div className="relative">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder={fallbackLabel}
+            className="w-full rounded-xl border border-fg/10 bg-surface-el/30 px-4 py-2.5 pl-10 text-sm text-fg placeholder-fg/40 focus:border-fg/20 focus:outline-none"
+          />
+          <svg
+            className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg/40"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
           >
-            <Download className="h-4 w-4 text-fg" />
-          </button>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            />
+          </svg>
         </div>
-      ) : null}
-    </div>
+
+        <div className="max-h-[50vh] space-y-2 overflow-y-auto">
+          <button
+            onClick={() => onSelect(null)}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition",
+              !selectedModelId ? "border-accent/40 bg-accent/10" : "border-fg/10 bg-fg/5 hover:bg-fg/10",
+            )}
+          >
+            <Image className="h-5 w-5 text-fg/40" />
+            <span className="text-sm text-fg">{emptyLabel}</span>
+            {!selectedModelId && <Check className="ml-auto h-4 w-4 text-accent/80" />}
+          </button>
+
+          {filteredModels.map((model) => (
+            <button
+              key={model.id}
+              onClick={() => onSelect(model.id)}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition",
+                selectedModelId === model.id
+                  ? "border-accent/40 bg-accent/10"
+                  : "border-fg/10 bg-fg/5 hover:bg-fg/10",
+              )}
+            >
+              {getProviderIcon(model.providerId)}
+              <div className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-fg">
+                  {model.displayName || model.name}
+                </span>
+                <span className="block truncate text-xs text-fg/40">{model.name}</span>
+              </div>
+              {selectedModelId === model.id && <Check className="h-4 w-4 shrink-0 text-accent/80" />}
+            </button>
+          ))}
+        </div>
+      </div>
+    </BottomMenu>
   );
 }
 
@@ -89,36 +176,28 @@ export function ImageGenerationPage() {
   const { t } = useI18n();
   const [state, setState] = useState<ImageGenerationState>({
     loading: true,
-    generating: false,
     error: null,
     models: [],
-    providers: [],
-    selectedModel: null,
-    selectedProvider: null,
-    generatedImages: [],
+    avatarModelId: null,
+    sceneModelId: null,
   });
+  const [showAvatarMenu, setShowAvatarMenu] = useState(false);
+  const [showSceneMenu, setShowSceneMenu] = useState(false);
+  const [avatarSearchQuery, setAvatarSearchQuery] = useState("");
+  const [sceneSearchQuery, setSceneSearchQuery] = useState("");
 
-  const [prompt, setPrompt] = useState("");
-  const [size, setSize] = useState("1024x1024");
-  const [quality, setQuality] = useState("standard");
-  const [style, setStyle] = useState("vivid");
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
-  // Load image generation models
   useEffect(() => {
-    (async () => {
+    const load = async () => {
       try {
         const settings = await readSettings();
         const options = resolveImageGenerationOptions(settings);
-
-        setState((prev) => ({
-          ...prev,
+        setState({
           loading: false,
+          error: null,
           models: options.models,
-          providers: options.providers,
-          selectedModel: options.defaultModel,
-          selectedProvider: options.defaultProvider,
-        }));
+          avatarModelId: settings.advancedSettings?.avatarGenerationModelId ?? null,
+          sceneModelId: settings.advancedSettings?.sceneGenerationModelId ?? null,
+        });
       } catch (err) {
         console.error("Failed to load image generation settings:", err);
         setState((prev) => ({
@@ -127,76 +206,42 @@ export function ImageGenerationPage() {
           error: err instanceof Error ? err.message : "Failed to load settings",
         }));
       }
-    })();
+    };
+
+    void load();
   }, []);
 
-  const handleModelChange = useCallback(
-    (modelId: string) => {
-      const model = state.models.find((m) => m.id === modelId) ?? null;
-      const provider = model
-        ? resolveProviderCredential(state.providers, model.providerId, model.providerLabel)
-        : null;
-
-      setState((prev) => ({
-        ...prev,
-        selectedModel: model,
-        selectedProvider: provider,
-      }));
-
-      // Update size options for the new model
-      if (model) {
-        const sizes = getModelSizes(model.providerId, model.name);
-        if (sizes.length > 0 && !sizes.includes(size)) {
-          setSize(sizes[0]);
-        }
-      }
-    },
-    [state.models, state.providers, size],
-  );
-
-  const handleGenerate = useCallback(async () => {
-    if (!state.selectedModel || !state.selectedProvider || !prompt.trim()) {
-      return;
-    }
-
-    setState((prev) => ({ ...prev, generating: true, error: null }));
+  const persistSelection = async (key: SelectorKey, modelId: string | null) => {
+    setState((prev) => ({
+      ...prev,
+      [key]: modelId,
+      error: null,
+    }));
 
     try {
-      const request: ImageGenerationRequest = {
-        prompt: prompt.trim(),
-        model: state.selectedModel.name,
-        providerId: state.selectedModel.providerId,
-        credentialId: state.selectedProvider.id,
-        size,
-        quality: state.selectedModel.providerId === "openai" ? quality : undefined,
-        style: state.selectedModel.providerId === "openai" ? style : undefined,
-        n: 1,
-      };
-
-      const response = await generateImage(request);
-
-      setState((prev) => ({
-        ...prev,
-        generating: false,
-        generatedImages: [...response.images, ...prev.generatedImages],
-      }));
-
-      setPrompt("");
+      const settings = await readSettings();
+      await saveAdvancedSettings({
+        ...(settings.advancedSettings ?? {}),
+        avatarGenerationModelId:
+          key === "avatarModelId" ? modelId ?? undefined : settings.advancedSettings?.avatarGenerationModelId,
+        sceneGenerationModelId:
+          key === "sceneModelId" ? modelId ?? undefined : settings.advancedSettings?.sceneGenerationModelId,
+      });
     } catch (err) {
-      console.error("Image generation failed:", err);
+      console.error("Failed to save image generation settings:", err);
       setState((prev) => ({
         ...prev,
-        generating: false,
-        error: err instanceof Error ? err.message : "Image generation failed",
+        error: err instanceof Error ? err.message : "Failed to save image generation settings",
       }));
     }
-  }, [state.selectedModel, state.selectedProvider, prompt, size, quality, style]);
+  };
 
-  const availableSizes = state.selectedModel
-    ? getModelSizes(state.selectedModel.providerId, state.selectedModel.name)
-    : ["1024x1024"];
-
-  const isOpenAI = state.selectedModel?.providerId === "openai";
+  const selectedAvatarModel = state.avatarModelId
+    ? state.models.find((model) => model.id === state.avatarModelId) ?? null
+    : null;
+  const selectedSceneModel = state.sceneModelId
+    ? state.models.find((model) => model.id === state.sceneModelId) ?? null
+    : null;
 
   if (state.loading) {
     return (
@@ -209,211 +254,88 @@ export function ImageGenerationPage() {
   if (state.models.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center px-6">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-fg/10 bg-fg/5 mb-4">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-fg/10 bg-fg/5">
           <Image className="h-8 w-8 text-fg/40" />
         </div>
-        <h2 className="text-lg font-semibold text-fg mb-2">{t("imageGeneration.empty.title")}</h2>
-        <p className="text-center text-sm text-fg/50 mb-4">
-          {t("imageGeneration.empty.description")}
-        </p>
-        <p className="text-center text-xs text-fg/40">
-          Supported providers: OpenAI (DALL-E), Google (Imagen), OpenRouter
-        </p>
+        <h2 className="mb-2 text-lg font-semibold text-fg">{t("imageGeneration.empty.title")}</h2>
+        <p className="text-center text-sm text-fg/50">{t("imageGeneration.empty.description")}</p>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Main Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {/* Error Banner */}
-        <AnimatePresence>
+    <div className="flex min-h-screen flex-col">
+      <main className="flex-1 px-4 pb-24 pt-4">
+        <div className="mx-auto w-full max-w-5xl space-y-6">
           {state.error && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 flex items-start gap-3"
-            >
-              <AlertCircle className="h-5 w-5 text-danger/80 shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-danger/80">Generation Failed</p>
-                <p className="text-xs text-danger/70 mt-0.5">{state.error}</p>
-              </div>
-              <button
-                onClick={() => setState((prev) => ({ ...prev, error: null }))}
-                className="text-danger/80/60 hover:text-danger/80 text-xs"
-              >
-                Dismiss
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Model Selection */}
-        <div className="space-y-2">
-          <label className="text-[11px] font-medium text-fg/70">
-            {t("imageGeneration.labels.model")}
-          </label>
-          <select
-            value={state.selectedModel?.id ?? ""}
-            onChange={(e) => handleModelChange(e.target.value)}
-            className="w-full rounded-xl border border-fg/10 bg-surface-el/20 px-3 py-2.5 text-fg transition focus:border-fg/30 focus:outline-none"
-          >
-            {state.models.map((model) => (
-              <option key={model.id} value={model.id} className="bg-surface-el">
-                {model.displayName}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Prompt Input */}
-        <div className="space-y-2">
-          <label className="text-[11px] font-medium text-fg/70">
-            {t("imageGeneration.labels.prompt")}
-          </label>
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder={t("imageGeneration.promptPlaceholder")}
-            rows={4}
-            className="w-full rounded-xl border border-fg/10 bg-surface-el/20 px-3 py-2.5 text-fg placeholder-fg/40 transition focus:border-fg/30 focus:outline-none resize-none"
-          />
-        </div>
-
-        {/* Advanced Settings Toggle */}
-        <button
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          className="flex w-full items-center justify-between rounded-xl border border-fg/10 bg-fg/5 px-4 py-3 text-left transition active:bg-fg/10"
-        >
-          <span className="text-sm font-medium text-fg">Advanced Settings</span>
-          <ChevronDown
-            className={`h-4 w-4 text-fg/50 transition-transform ${
-              showAdvanced ? "rotate-180" : ""
-            }`}
-          />
-        </button>
-
-        {/* Advanced Settings */}
-        <AnimatePresence>
-          {showAdvanced && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="space-y-4 overflow-hidden"
-            >
-              {/* Size */}
-              <div className="space-y-2">
-                <label className="text-[11px] font-medium text-fg/70">
-                  {t("imageGeneration.labels.size")}
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {availableSizes.map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => setSize(s)}
-                      className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-                        size === s
-                          ? "border border-accent/40 bg-accent/20 text-accent/80"
-                          : "border border-fg/10 bg-fg/5 text-fg/60 active:bg-fg/10"
-                      }`}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* OpenAI-specific options */}
-              {isOpenAI && (
-                <>
-                  {/* Quality */}
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-medium text-fg/70">
-                      {t("imageGeneration.labels.quality")}
-                    </label>
-                    <div className="flex gap-2">
-                      {["standard", "hd"].map((q) => (
-                        <button
-                          key={q}
-                          onClick={() => setQuality(q)}
-                          className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                            quality === q
-                              ? "border border-info/40 bg-info/20 text-info"
-                              : "border border-fg/10 bg-fg/5 text-fg/60 active:bg-fg/10"
-                          }`}
-                        >
-                          {q.toUpperCase()}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Style */}
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-medium text-fg/70">
-                      {t("imageGeneration.labels.style")}
-                    </label>
-                    <div className="flex gap-2">
-                      {["vivid", "natural"].map((s) => (
-                        <button
-                          key={s}
-                          onClick={() => setStyle(s)}
-                          className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                            style === s
-                              ? "border border-secondary/40 bg-secondary/20 text-secondary"
-                              : "border border-fg/10 bg-fg/5 text-fg/60 active:bg-fg/10"
-                          }`}
-                        >
-                          {s.charAt(0).toUpperCase() + s.slice(1)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Generate Button */}
-        <button
-          onClick={handleGenerate}
-          disabled={state.generating || !prompt.trim() || !state.selectedModel}
-          className="w-full rounded-xl border border-accent/40 bg-accent/20 px-4 py-3 text-sm font-semibold text-accent/90 transition hover:bg-accent/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          {state.generating ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Generating...
-            </>
-          ) : (
-            <>
-              <Sparkles className="h-4 w-4" />
-              Generate Image
-            </>
-          )}
-        </button>
-
-        {/* Generated Images */}
-        {state.generatedImages.length > 0 && (
-          <div className="space-y-3">
-            <h3 className="text-sm font-medium text-fg/70">Generated Images</h3>
-            <div className="grid grid-cols-2 gap-3">
-              {state.generatedImages.map((img, idx) => (
-                <GeneratedImageCard
-                  key={`${img.assetId || img.filePath}-${idx}`}
-                  image={img}
-                  index={idx}
-                />
-              ))}
+            <div className="rounded-xl border border-danger/20 bg-danger/5 p-3">
+              <p className="text-xs leading-relaxed text-danger/80">{state.error}</p>
             </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <SelectorCard
+              title={t("imageGeneration.sections.avatar.title")}
+              description={t("imageGeneration.sections.avatar.description")}
+              selectedModel={selectedAvatarModel}
+              fallbackLabel={t("imageGeneration.labels.useFirstAvailable")}
+              icon={Image}
+              accentClassName="border-warning/30 bg-warning/10 text-warning/80"
+              onClick={() => setShowAvatarMenu(true)}
+            />
+
+            <SelectorCard
+              title={t("imageGeneration.sections.scene.title")}
+              description={t("imageGeneration.sections.scene.description")}
+              selectedModel={selectedSceneModel}
+              fallbackLabel={t("imageGeneration.labels.useFirstAvailable")}
+              icon={Sparkles}
+              accentClassName="border-accent/30 bg-accent/10 text-accent/80"
+              onClick={() => setShowSceneMenu(true)}
+            />
           </div>
-        )}
-      </div>
+        </div>
+      </main>
+
+      <ModelSelectionMenu
+        isOpen={showAvatarMenu}
+        title={t("imageGeneration.labels.selectAvatarModel")}
+        models={state.models}
+        selectedModelId={state.avatarModelId}
+        searchQuery={avatarSearchQuery}
+        emptyLabel={t("imageGeneration.labels.useFirstAvailable")}
+        fallbackLabel={t("imageGeneration.labels.searchModels")}
+        onClose={() => {
+          setShowAvatarMenu(false);
+          setAvatarSearchQuery("");
+        }}
+        onSearchChange={setAvatarSearchQuery}
+        onSelect={(modelId) => {
+          void persistSelection("avatarModelId", modelId);
+          setShowAvatarMenu(false);
+          setAvatarSearchQuery("");
+        }}
+      />
+
+      <ModelSelectionMenu
+        isOpen={showSceneMenu}
+        title={t("imageGeneration.labels.selectSceneModel")}
+        models={state.models}
+        selectedModelId={state.sceneModelId}
+        searchQuery={sceneSearchQuery}
+        emptyLabel={t("imageGeneration.labels.useFirstAvailable")}
+        fallbackLabel={t("imageGeneration.labels.searchModels")}
+        onClose={() => {
+          setShowSceneMenu(false);
+          setSceneSearchQuery("");
+        }}
+        onSearchChange={setSceneSearchQuery}
+        onSelect={(modelId) => {
+          void persistSelection("sceneModelId", modelId);
+          setShowSceneMenu(false);
+          setSceneSearchQuery("");
+        }}
+      />
     </div>
   );
 }
