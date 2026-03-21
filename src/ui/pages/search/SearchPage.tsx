@@ -16,6 +16,7 @@ import { useAvatar } from "../../hooks/useAvatar";
 import { useAvatarGradient } from "../../hooks/useAvatarGradient";
 import { useRocketEasterEgg } from "../../hooks/useRocketEasterEgg";
 import { AvatarImage } from "../../components/AvatarImage";
+import { isRenderableImageUrl } from "../../../core/utils/image";
 
 type SearchTab = "characters" | "personas";
 
@@ -491,9 +492,5 @@ function EmptyState({ type, hasQuery }: { type: "characters" | "personas"; hasQu
 }
 
 function isImageLike(s?: string) {
-  if (!s) return false;
-  const lower = s.toLowerCase();
-  return (
-    lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("data:image")
-  );
+  return isRenderableImageUrl(s);
 }

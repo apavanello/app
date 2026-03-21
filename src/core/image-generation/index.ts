@@ -3,6 +3,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Model, ProviderCredential, Settings } from "../storage/schemas";
 import { convertToImageUrl } from "../storage/images";
 import { getPromptTemplate } from "../prompts/service";
+import { isRenderableImageUrl } from "../utils/image";
 import {
   APP_AVATAR_EDIT_TEMPLATE_ID,
   APP_AVATAR_GENERATION_TEMPLATE_ID,
@@ -245,7 +246,7 @@ export function resolveProviderCredential(
 }
 
 export async function resolveGeneratedImageUrl(image: GeneratedImage): Promise<string | undefined> {
-  if (image.url?.startsWith("data:") || image.url?.startsWith("http")) {
+  if (isRenderableImageUrl(image.url)) {
     return image.url;
   }
 

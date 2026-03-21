@@ -21,7 +21,9 @@ import { MarkdownRenderer } from "../chats/components/MarkdownRenderer";
 import { CharacterPreviewCard, PersonaPreviewCard, LorebookPreviewCard } from "./components";
 import { CreationHelperFooter } from "./components/CreationHelperFooter";
 import { ReferenceSelector, ReferenceAvatar, Reference } from "./components/ReferenceSelector";
+import { convertToImageUrl } from "../../../core/storage/images";
 import { listCharacters, listPersonas, readSettings } from "../../../core/storage/repo";
+import { isRenderableImageUrl } from "../../../core/utils/image";
 
 interface CreationMessage {
   id: string;
@@ -128,6 +130,7 @@ interface UploadedImage {
   id: string;
   data: string;
   mimeType: string;
+  assetId?: string | null;
 }
 
 interface ImageGenerationEntry {
@@ -168,7 +171,13 @@ function ImageThumbnail({
           imageId,
         });
         if (active && img) {
-          setImageUrl(img.data);
+          if (img.data && isRenderableImageUrl(img.data)) {
+            setImageUrl(img.data);
+          } else if (img.assetId) {
+            setImageUrl((await convertToImageUrl(img.assetId)) ?? null);
+          } else {
+            setImageUrl(null);
+          }
         }
       } catch (err) {
         console.error("Failed to load image thumbnail:", err);
@@ -194,7 +203,7 @@ function ImageThumbnail({
   return (
     <div className="group relative h-24 w-24 overflow-hidden rounded-lg border border-fg/10 bg-surface-el/20">
       <img
-        src={imageUrl.startsWith("data:") ? imageUrl : `data:image/png;base64,${imageUrl}`}
+        src={imageUrl}
         alt={filename}
         className="h-full w-full object-cover transition-transform group-hover:scale-105"
       />
@@ -231,7 +240,13 @@ function GeneratedImagePreview({
           imageId,
         });
         if (active && img) {
-          setImageUrl(img.data);
+          if (img.data && isRenderableImageUrl(img.data)) {
+            setImageUrl(img.data);
+          } else if (img.assetId) {
+            setImageUrl((await convertToImageUrl(img.assetId)) ?? null);
+          } else {
+            setImageUrl(null);
+          }
         }
       } catch (err) {
         console.error("Failed to load generated image:", err);
@@ -256,11 +271,7 @@ function GeneratedImagePreview({
         {loading ? (
           <Loader2 className="h-6 w-6 animate-spin text-fg/40" />
         ) : imageUrl ? (
-          <img
-            src={imageUrl.startsWith("data:") ? imageUrl : `data:image/png;base64,${imageUrl}`}
-            alt={label}
-            className="h-full w-full object-cover"
-          />
+          <img src={imageUrl} alt={label} className="h-full w-full object-cover" />
         ) : (
           <span className="text-xs text-fg/40">Failed to load</span>
         )}
@@ -595,9 +606,7 @@ export function CreationHelperPage() {
           });
           const wantsPreview = payload.activeToolResults.some((result) => {
             const resObj = result.result as any;
-            return (
-              resObj?.action === "show_preview" || resObj?.action === "request_confirmation"
-            );
+            return resObj?.action === "show_preview" || resObj?.action === "request_confirmation";
           });
           if (wantsPreview) {
             setShowPreview(true);
@@ -1734,7 +1743,15 @@ export function CreationHelperPage() {
       >
         {activeGoal === "character" && session?.draft && (
           <div className="space-y-4">
-            <CharacterPreviewCard draft={session.draft} sessionId={session.id} />
+            <CharacterPreviewCard
+              draft={session.draft}
+              sessionId={session.id}
+              targetCharacterId={
+                session.creationMode === "edit" && session.targetType === "character"
+                  ? (session.targetId ?? undefined)
+                  : undefined
+              }
+            />
 
             <MenuSection>
               <MenuButton
@@ -1775,7 +1792,15 @@ export function CreationHelperPage() {
 
         {activeGoal === "persona" && (
           <div className="space-y-4">
-            <PersonaPreviewCard persona={previewPersona} sessionId={session?.id} />
+            <PersonaPreviewCard
+              persona={previewPersona}
+              sessionId={session?.id}
+              targetPersonaId={
+                session?.creationMode === "edit" && session?.targetType === "persona"
+                  ? (session.targetId ?? undefined)
+                  : undefined
+              }
+            />
 
             <MenuSection>
               <MenuButton
@@ -1880,9 +1905,7 @@ export function CreationHelperPage() {
                 )}
               </div>
               <div>
-                <h3
-                  className={cn(typography.h2.size, typography.h2.weight, "text-fg text-base")}
-                >
+                <h3 className={cn(typography.h2.size, typography.h2.weight, "text-fg text-base")}>
                   {selectedTool.result.success ? "Execution Successful" : "Execution Failed"}
                 </h3>
                 <p className="text-fg/40 text-[10px] uppercase tracking-wider font-bold">

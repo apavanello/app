@@ -28,6 +28,7 @@ import {
 import { storageBridge } from "../../../core/storage/files";
 import { ChatTemplateSelector } from "./components/ChatTemplateSelector";
 import { useI18n } from "../../../core/i18n/context";
+import { isRenderableImageUrl } from "../../../core/utils/image";
 import { cleanupOldDrafts } from "./utils/draftCleanup";
 
 export function ChatPage() {
@@ -666,11 +667,7 @@ function EmptyState() {
 }
 
 function isImageLike(s?: string) {
-  if (!s) return false;
-  const lower = s.toLowerCase();
-  return (
-    lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("data:image")
-  );
+  return isRenderableImageUrl(s);
 }
 
 const CharacterAvatar = memo(

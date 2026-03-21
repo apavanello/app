@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 
 /**
  * Hook to load attachment data from storage when only storagePath is available.
- * Returns the data URL for the image, loading it from disk if needed.
+ * Returns a displayable URL for the image, loading it from disk if needed.
  *
- * @param data - The inline base64 data URL (if already loaded)
+ * @param data - An already-displayable image URL (if already loaded)
  * @param storagePath - The relative storage path to load from disk
- * @returns The data URL for display, or undefined if loading/not available
+ * @returns The image URL for display, or undefined if loading/not available
  */
 export function useSessionAttachment(
   data: string | undefined | null,
@@ -43,12 +43,12 @@ export function useSessionAttachment(
     loadingRef.current = true;
     lastPathRef.current = storagePath;
 
-    invoke<string>("storage_load_session_attachment", { storagePath })
-      .then((dataUrl) => {
+    invoke<string>("storage_get_session_attachment_path", { storagePath })
+      .then((filePath) => {
         if (requestVersionRef.current !== requestVersion) {
           return;
         }
-        setLoadedData(dataUrl);
+        setLoadedData(convertFileSrc(filePath));
         loadingRef.current = false;
       })
       .catch((err) => {
@@ -163,15 +163,16 @@ export function useSessionAttachments(
       for (const att of toLoad) {
         if (!att.storagePath) continue;
 
-        invoke<string>("storage_load_session_attachment", { storagePath: att.storagePath })
-          .then((dataUrl) => {
+        invoke<string>("storage_get_session_attachment_path", { storagePath: att.storagePath })
+          .then((filePath) => {
             if (cancelled || requestVersionRef.current !== requestVersion) {
               return;
             }
-            dataMapRef.current.set(att.id, dataUrl);
+            const assetUrl = convertFileSrc(filePath);
+            dataMapRef.current.set(att.id, assetUrl);
 
             setLoadedAttachments((prev) =>
-              prev.map((a) => (a.id === att.id ? { ...a, data: dataUrl } : a)),
+              prev.map((a) => (a.id === att.id ? { ...a, data: assetUrl } : a)),
             );
             trimCacheToLimit(dataMapRef.current, MAX_ATTACHMENT_CACHE_ENTRIES);
           })

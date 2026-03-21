@@ -1,18 +1,18 @@
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { isRenderableImageUrl } from "../utils/image";
 
 /**
  * Stores a base64-encoded image and returns a reference ID
  * This reduces performance issues from large image data URLs in state
- * 
+ *
  * In Tauri v2, images are stored as files on disk via the Rust backend
- * Images are automatically converted to WebP format for optimal storage efficiency.
- * For display, images are read from disk and returned as data URLs.
+ * and displayed through Tauri's asset protocol.
  */
 /**
  * Generates a UUID v4 for use as an image ID
  */
 function generateImageId(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
   }
   const bytes = new Uint8Array(16);
@@ -46,12 +46,12 @@ export async function convertToImageRef(imageData: string): Promise<string> {
   try {
     const imageId = generateImageId();
     console.log("[convertToImageRef] Generated image ID:", imageId);
-    
+
     const result = await invoke<string>("storage_write_image", {
       imageId: imageId,
       base64Data: imageData,
     });
-    
+
     console.log("[convertToImageRef] Rust returned:", result);
     console.log("[convertToImageRef] Successfully saved image with ID:", imageId);
     return imageId;
@@ -62,27 +62,22 @@ export async function convertToImageRef(imageData: string): Promise<string> {
 }
 
 /**
- * Converts an image ID to a displayable URL using Tauri v2 storage
- * Reads the image from disk and returns it as a data URL
- * 
- * For mobile platforms, we read the image file from disk and return it as a base64
- * data URL since the asset:// protocol doesn't work reliably on Android.
+ * Converts an image ID to a displayable URL using Tauri's asset protocol.
  */
-export async function convertToImageUrl(
-  imageIdOrDataUrl: string
-): Promise<string | undefined> {
-  if (imageIdOrDataUrl.startsWith("data:")) {
+export async function convertToImageUrl(imageIdOrDataUrl: string): Promise<string | undefined> {
+  if (isRenderableImageUrl(imageIdOrDataUrl)) {
     return imageIdOrDataUrl;
   }
 
   try {
-    // Read image from disk as base64 data URL
-    const dataUrl = await invoke<string>("storage_read_image", {
-      imageId: imageIdOrDataUrl,
-    });
+    const filePath = await getImageRef(imageIdOrDataUrl);
+    if (!filePath) {
+      return undefined;
+    }
 
-    console.log("[convertToImageUrl] Loaded image for ID:", imageIdOrDataUrl);
-    return dataUrl;
+    const assetUrl = convertFileSrc(filePath);
+    console.log("[convertToImageUrl] Loaded asset URL for ID:", imageIdOrDataUrl);
+    return assetUrl;
   } catch (error) {
     console.error("Failed to read image:", error);
     return undefined;
@@ -92,21 +87,19 @@ export async function convertToImageUrl(
 /**
  * Preloads multiple image URLs for performance optimization
  * Call this when entering the Chat component to eagerly load images
- * 
+ *
  * @param imageIds - Array of image IDs to preload
  * @returns Promise that resolves when all images are preloaded
  */
 export async function preloadImages(imageIds: (string | undefined | null)[]): Promise<void> {
-  const validIds = imageIds.filter((id): id is string => !!id && !id.startsWith("data:") && !id.startsWith("http"));
-  
+  const validIds = imageIds.filter((id): id is string => !!id && !isRenderableImageUrl(id));
+
   if (validIds.length === 0) {
     return;
   }
 
   try {
-    await Promise.all(
-      validIds.map(id => convertToImageUrl(id))
-    );
+    await Promise.all(validIds.map((id) => convertToImageUrl(id)));
   } catch (error) {
     console.error("Failed to preload images:", error);
   }

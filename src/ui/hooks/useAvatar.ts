@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AVATAR_ROUND_FILENAME, loadAvatar, type EntityType } from "../../core/storage/avatars";
+import { isRenderableImageUrl } from "../../core/utils/image";
 
 const avatarCache = new Map<string, string | Promise<string>>();
 
@@ -39,7 +40,7 @@ export function useAvatar(
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>(() => {
     if (entityId && avatarFilename) {
       const resolvedFilename =
-        variant === "round" && !avatarFilename.startsWith("data:")
+        variant === "round" && !isRenderableImageUrl(avatarFilename)
           ? AVATAR_ROUND_FILENAME
           : avatarFilename;
       const cacheKey = `${type}:${entityId}:${variant}:${resolvedFilename}`;
@@ -60,7 +61,7 @@ export function useAvatar(
         return;
       }
 
-      if (avatarFilename.startsWith("data:")) {
+      if (isRenderableImageUrl(avatarFilename)) {
         const cacheKey = `${type}:${entityId}:${variant}:${avatarFilename}`;
         avatarCache.set(cacheKey, avatarFilename);
         setAvatarUrl(avatarFilename);

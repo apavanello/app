@@ -3,6 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { User } from "lucide-react";
 import { cn, typography } from "../../../design-tokens";
 import { useI18n } from "../../../../core/i18n/context";
+import { loadAvatar } from "../../../../core/storage/avatars";
+import { convertToImageUrl } from "../../../../core/storage/images";
+import { isRenderableImageUrl } from "../../../../core/utils/image";
 
 interface PersonaPreview {
   id?: string;
@@ -14,14 +17,17 @@ interface PersonaPreview {
 
 interface UploadedImage {
   data: string;
+  assetId?: string | null;
 }
 
 export function PersonaPreviewCard({
   persona,
   sessionId,
+  targetPersonaId,
 }: {
   persona: PersonaPreview | null;
   sessionId?: string;
+  targetPersonaId?: string;
 }) {
   const { t } = useI18n();
   const [avatarSrc, setAvatarSrc] = useState<string | null>(null);
@@ -38,7 +44,7 @@ export function PersonaPreviewCard({
         return;
       }
 
-      if (path.startsWith("data:") || path.startsWith("http") || path.startsWith("blob:")) {
+      if (isRenderableImageUrl(path)) {
         setSrc(path);
         return;
       }
@@ -50,7 +56,14 @@ export function PersonaPreviewCard({
             imageId: path,
           });
           if (img) {
-            setSrc(img.data.startsWith("data:") ? img.data : `data:image/png;base64,${img.data}`);
+            if (img.data && isRenderableImageUrl(img.data)) {
+              setSrc(img.data);
+              return;
+            }
+            if (img.assetId) {
+              setSrc((await convertToImageUrl(img.assetId)) ?? null);
+              return;
+            }
             return;
           }
         } catch (e) {
@@ -58,11 +71,26 @@ export function PersonaPreviewCard({
         }
       }
 
-      setSrc(`data:image/png;base64,${path}`);
+      const personaId = targetPersonaId ?? persona?.id;
+      if (personaId) {
+        try {
+          setSrc((await loadAvatar("persona", personaId, path)) ?? null);
+          return;
+        } catch (error) {
+          console.error("Failed to resolve persisted persona avatar:", path, error);
+        }
+      }
+
+      if (path.length === 36) {
+        setSrc((await convertToImageUrl(path)) ?? null);
+        return;
+      }
+
+      setSrc(null);
     };
 
     resolveImage(avatarPath, setAvatarSrc);
-  }, [avatarPath, sessionId]);
+  }, [avatarPath, persona?.id, sessionId, targetPersonaId]);
 
   return (
     <div className="rounded-2xl border border-fg/10 bg-fg/5 overflow-hidden">
@@ -99,7 +127,9 @@ export function PersonaPreviewCard({
         </div>
 
         <div className="mt-4">
-          <p className="text-xs text-fg/40 uppercase tracking-wider mb-1">{t("characters.personaPreview.description")}</p>
+          <p className="text-xs text-fg/40 uppercase tracking-wider mb-1">
+            {t("characters.personaPreview.description")}
+          </p>
           <p className="text-sm text-fg/70 line-clamp-4">{description}</p>
         </div>
       </div>

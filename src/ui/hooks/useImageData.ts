@@ -1,27 +1,30 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { convertToImageUrl } from "../../core/storage";
+import { isRenderableImageUrl } from "../../core/utils/image";
 
 interface UseImageDataOptions {
   lazy?: boolean;
 }
 
 /**
- * Hook to automatically load image URL from an image ID
- * Returns the Tauri asset protocol URL for display, or undefined if loading/not set
- * 
+ * Hook to automatically load image URLs from image IDs.
+ *
  * Loads images immediately and asynchronously to avoid blocking the UI thread.
  * Results are cached to prevent reloading the same image across re-renders.
  */
 export function useImageData(
   imageIdOrData: string | undefined | null,
-  options?: UseImageDataOptions
+  options?: UseImageDataOptions,
 ): string | undefined {
   const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
   const lastProcessedIdRef = useRef<string | null | undefined>(undefined);
-  
-  const memoizedOptions = useMemo<UseImageDataOptions>(() => ({
-    lazy: options?.lazy ?? false, 
-  }), [options?.lazy]);
+
+  const memoizedOptions = useMemo<UseImageDataOptions>(
+    () => ({
+      lazy: options?.lazy ?? false,
+    }),
+    [options?.lazy],
+  );
 
   const [shouldLoad, setShouldLoad] = useState(!memoizedOptions.lazy);
 
@@ -36,7 +39,7 @@ export function useImageData(
       return;
     }
 
-    if (imageIdOrData.startsWith("data:") || imageIdOrData.startsWith("http")) {
+    if (isRenderableImageUrl(imageIdOrData)) {
       setImageUrl(imageIdOrData);
       lastProcessedIdRef.current = imageIdOrData;
       return;
@@ -58,7 +61,7 @@ export function useImageData(
         }
       })
       .catch((err: any) => {
-        console.error('[useImageData] Failed to load image:', err);
+        console.error("[useImageData] Failed to load image:", err);
         if (!cancelled) {
           setImageUrl(undefined);
         }

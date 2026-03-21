@@ -7,6 +7,7 @@ import type { GroupSession, Character } from "../../../../core/storage/schemas";
 import { AvatarImage } from "../../../components/AvatarImage";
 import { cn } from "../../../design-tokens";
 import { useAvatar } from "../../../hooks/useAvatar";
+import { isRenderableImageUrl } from "../../../../core/utils/image";
 
 export function GroupChatHeader({
   session,
@@ -197,11 +198,7 @@ export function GroupChatHeader({
 }
 
 function isImageLike(s?: string) {
-  if (!s) return false;
-  const lower = s.toLowerCase();
-  return (
-    lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("data:image")
-  );
+  return isRenderableImageUrl(s);
 }
 
 function CharacterMiniAvatar({

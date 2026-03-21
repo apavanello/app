@@ -57,13 +57,10 @@ import { PersonaSelector } from "../group-chats/components/settings";
 import { storageBridge } from "../../../core/storage/files";
 import { ChatTemplateSelector } from "./components/ChatTemplateSelector";
 import { useI18n } from "../../../core/i18n/context";
+import { isRenderableImageUrl } from "../../../core/utils/image";
 
 function isImageLike(value?: string) {
-  if (!value) return false;
-  const lower = value.toLowerCase();
-  return (
-    lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("data:image")
-  );
+  return isRenderableImageUrl(value);
 }
 
 interface SettingsButtonProps {

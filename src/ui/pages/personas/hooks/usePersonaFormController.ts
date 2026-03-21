@@ -70,6 +70,7 @@ export function usePersonaFormController(personaId: string | undefined) {
     avatarCrop: string;
     avatarRoundPath: string;
   } | null>(null);
+  const persistedAvatarRef = useRef<{ filename?: string; url?: string }>({});
 
   const loadPersona = useCallback(async () => {
     if (!personaId) {
@@ -97,6 +98,11 @@ export function usePersonaFormController(personaId: string | undefined) {
         avatarRoundDataUrl = loadedRound ?? null;
       }
 
+      persistedAvatarRef.current = {
+        filename: persona.avatarPath ?? undefined,
+        url: avatarDataUrl ?? undefined,
+      };
+
       dispatch({
         type: "set_fields",
         payload: {
@@ -107,15 +113,15 @@ export function usePersonaFormController(personaId: string | undefined) {
           avatarPath: avatarDataUrl,
           avatarCrop: persona.avatarCrop ?? null,
           avatarRoundPath: avatarRoundDataUrl,
-          },
-          });
+        },
+      });
 
-          // Store initial state for change detection
-          initialStateRef.current = {
-          title: persona.title,
-          description: persona.description,
-          nickname: persona.nickname ?? "",
-          isDefault: persona.isDefault ?? false,
+      // Store initial state for change detection
+      initialStateRef.current = {
+        title: persona.title,
+        description: persona.description,
+        nickname: persona.nickname ?? "",
+        isDefault: persona.isDefault ?? false,
         avatarPath: avatarDataUrl,
         avatarCrop: JSON.stringify(persona.avatarCrop ?? null),
         avatarRoundPath: JSON.stringify(avatarRoundDataUrl ?? null),
@@ -182,11 +188,18 @@ export function usePersonaFormController(personaId: string | undefined) {
       // Save avatar if provided
       let avatarFilename: string | undefined = undefined;
       if (avatarPath) {
-        avatarFilename = await saveAvatar("persona", personaId, avatarPath, avatarRoundPath);
-        if (!avatarFilename) {
-          console.error("[EditPersona] Failed to save avatar image");
+        if (avatarPath.startsWith("data:")) {
+          avatarFilename = await saveAvatar("persona", personaId, avatarPath, avatarRoundPath);
+          if (!avatarFilename) {
+            console.error("[EditPersona] Failed to save avatar image");
+          } else {
+            invalidateAvatarCache("persona", personaId);
+          }
         } else {
-          invalidateAvatarCache("persona", personaId);
+          avatarFilename =
+            persistedAvatarRef.current.url && avatarPath === persistedAvatarRef.current.url
+              ? persistedAvatarRef.current.filename
+              : avatarPath;
         }
       }
 

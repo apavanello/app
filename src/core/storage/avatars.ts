@@ -1,4 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { isRenderableImageUrl } from "../utils/image";
 
 /**
  * Centralized avatar management system
@@ -79,13 +80,12 @@ export async function saveAvatar(
 }
 
 /**
- * Loads an avatar image as a data URL
- * Reads from avatars/<type>-<id>/ directory
+ * Loads an avatar image through Tauri's asset protocol.
  *
  * @param type - Entity type (character or persona)
  * @param entityId - The character or persona ID
  * @param avatarFilename - The avatar filename (from character.avatarPath)
- * @returns Data URL of the avatar or undefined on failure
+ * @returns Displayable URL of the avatar or undefined on failure
  */
 export async function loadAvatar(
   type: EntityType,
@@ -96,15 +96,19 @@ export async function loadAvatar(
     return undefined;
   }
 
+  if (isRenderableImageUrl(avatarFilename)) {
+    return avatarFilename;
+  }
+
   try {
     const prefixedId = getPrefixedEntityId(type, entityId);
-    const dataUrl = await invoke<string>("storage_load_avatar", {
+    const filePath = await invoke<string>("storage_get_avatar_path", {
       entityId: prefixedId,
       filename: avatarFilename,
     });
 
     console.log("[loadAvatar] Loaded avatar for entity:", prefixedId);
-    return dataUrl;
+    return convertFileSrc(filePath);
   } catch (error) {
     console.error("[loadAvatar] Failed to load avatar:", error);
     return undefined;

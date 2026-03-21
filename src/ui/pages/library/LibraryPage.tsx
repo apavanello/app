@@ -42,6 +42,7 @@ import { exportPersona, generateExportFilename } from "../../../core/storage/per
 import { importLorebook, readFileAsText } from "../../../core/storage/lorebookTransfer";
 import { listen } from "@tauri-apps/api/event";
 import { useI18n } from "../../../core/i18n/context";
+import { isRenderableImageUrl } from "../../../core/utils/image";
 
 type FilterOption = "All" | "Characters" | "Personas" | "Lorebooks";
 type LibraryItem = (Character | Persona | Lorebook) & {
@@ -608,11 +609,7 @@ export function LibraryPage() {
 }
 
 function isImageLike(s?: string) {
-  if (!s) return false;
-  const lower = s.toLowerCase();
-  return (
-    lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("data:image")
-  );
+  return isRenderableImageUrl(s);
 }
 
 function getItemAvatarPath(item: LibraryItem): string | undefined {

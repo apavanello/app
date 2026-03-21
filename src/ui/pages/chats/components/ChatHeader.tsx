@@ -8,6 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Routes } from "../../../navigation";
 import { cn } from "../../../design-tokens";
 import { useI18n } from "../../../../core/i18n/context";
+import { isRenderableImageUrl } from "../../../../core/utils/image";
 
 interface ChatHeaderProps {
   character: Character;
@@ -21,11 +22,7 @@ interface ChatHeaderProps {
 }
 
 function isImageLike(value?: string) {
-  if (!value) return false;
-  const lower = value.toLowerCase();
-  return (
-    lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("data:image")
-  );
+  return isRenderableImageUrl(value);
 }
 
 export function ChatHeader({

@@ -9,6 +9,7 @@ import { useCharactersController } from "../characters/hooks/useCharactersContro
 import { useAvatar } from "../../hooks/useAvatar";
 import { useMultipleAvatarGradients } from "../../hooks/useAvatarGradient";
 import { useI18n } from "../../../core/i18n/context";
+import { isRenderableImageUrl } from "../../../core/utils/image";
 
 const CharacterSkeleton = () => (
   <div className="space-y-3">
@@ -32,9 +33,7 @@ const EmptyState = ({ onCreate }: { onCreate: () => void }) => {
     <div className="flex h-64 flex-col items-center justify-center">
       <Sparkles className="mb-3 h-12 w-12 text-fg/20" />
       <h3 className="mb-1 text-lg font-medium text-fg">{t("characters.empty.title")}</h3>
-      <p className="mb-4 text-center text-sm text-fg/50">
-        {t("characters.empty.description")}
-      </p>
+      <p className="mb-4 text-center text-sm text-fg/50">{t("characters.empty.description")}</p>
       <button
         onClick={onCreate}
         className="rounded-full border border-accent/40 bg-accent/20 px-6 py-2 text-sm font-medium text-accent/90 transition hover:bg-accent/30 active:scale-[0.99]"
@@ -46,11 +45,7 @@ const EmptyState = ({ onCreate }: { onCreate: () => void }) => {
 };
 
 function isImageLike(s?: string) {
-  if (!s) return false;
-  const lower = s.toLowerCase();
-  return (
-    lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("data:image")
-  );
+  return isRenderableImageUrl(s);
 }
 
 function CharacterAvatar({ character }: { character: Character }) {

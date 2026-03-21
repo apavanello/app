@@ -589,23 +589,21 @@ pub fn get_uploaded_image(
         .transpose()
 }
 
-pub fn get_all_uploaded_images(
-    app: &AppHandle,
+pub fn get_uploaded_image_metadata(
     session_id: &str,
-) -> Result<Vec<UploadedImage>, String> {
+    image_id: &str,
+) -> Result<Option<UploadedImage>, String> {
+    get_uploaded_image_record(session_id, image_id)
+}
+
+pub fn get_all_uploaded_images_metadata(session_id: &str) -> Result<Vec<UploadedImage>, String> {
     let images = UPLOADED_IMAGES
         .lock()
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    images
+    Ok(images
         .get(session_id)
-        .map(|session_images| {
-            session_images
-                .values()
-                .cloned()
-                .map(|image| hydrate_uploaded_image(app, image))
-                .collect()
-        })
-        .unwrap_or_else(|| Ok(Vec::new()))
+        .map(|session_images| session_images.values().cloned().collect())
+        .unwrap_or_default())
 }
 
 fn resolve_uploaded_image_id(session_id: &str, image_id: &str) -> Result<Option<String>, String> {

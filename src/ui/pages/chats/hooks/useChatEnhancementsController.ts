@@ -17,6 +17,7 @@ import {
 import type { GeneratedImage } from "../../../../core/image-generation";
 import { readSettings, SETTINGS_UPDATED_EVENT } from "../../../../core/storage/repo";
 import type { ImageAttachment, Session, StoredMessage } from "../../../../core/storage/schemas";
+import { isRenderableImageUrl } from "../../../../core/utils/image";
 import { toast } from "../../../components/toast";
 import type { ChatControllerModuleContext } from "./chatControllerShared";
 
@@ -119,8 +120,8 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
 
   const dataUrlFromGeneratedImage = useCallback(
     async (generated: GeneratedImage): Promise<string> => {
-      if (generated.url && generated.url.startsWith("data:")) {
-        return generated.url;
+      if (isRenderableImageUrl(generated.url)) {
+        return generated.url!;
       }
 
       const src = await resolveGeneratedImageUrl(generated);

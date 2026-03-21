@@ -281,6 +281,26 @@ pub fn storage_load_avatar(
 }
 
 #[tauri::command]
+pub fn storage_get_avatar_path(
+    app: tauri::AppHandle,
+    entity_id: String,
+    filename: String,
+) -> Result<String, String> {
+    let avatar_path = storage_root(&app)?
+        .join("avatars")
+        .join(&entity_id)
+        .join(&filename);
+    if !avatar_path.exists() {
+        return Err(crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!("Avatar not found: {}/{}", entity_id, filename),
+        ));
+    }
+    Ok(avatar_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 pub fn storage_delete_avatar(
     app: tauri::AppHandle,
     entity_id: String,

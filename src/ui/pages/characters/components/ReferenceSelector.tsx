@@ -8,6 +8,7 @@ import { useAvatar } from "../../../hooks/useAvatar";
 import { AvatarImage } from "../../../components/AvatarImage";
 import type { AvatarCrop, Character, Persona } from "../../../../core/storage/schemas";
 import { useI18n } from "../../../../core/i18n/context";
+import { isRenderableImageUrl } from "../../../../core/utils/image";
 
 export interface Reference {
   type: "character" | "persona";
@@ -27,11 +28,7 @@ interface ReferenceSelectorProps {
 }
 
 function isImageLike(s?: string) {
-  if (!s) return false;
-  const lower = s.toLowerCase();
-  return (
-    lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("data:image")
-  );
+  return isRenderableImageUrl(s);
 }
 
 // Avatar component that uses the useAvatar hook
@@ -267,7 +264,12 @@ export function ReferenceSelector({
                           size="md"
                         />
                         <div className="flex-1 min-w-0">
-                          <div className={cn(typography.body.size, "flex items-center gap-2 overflow-hidden")}>
+                          <div
+                            className={cn(
+                              typography.body.size,
+                              "flex items-center gap-2 overflow-hidden",
+                            )}
+                          >
                             <span className="font-medium text-fg truncate">{name}</span>
                             {type === "persona" && (item as Persona).nickname && (
                               <span className="shrink-0 rounded-full border border-fg/15 bg-fg/5 px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider text-fg/60">

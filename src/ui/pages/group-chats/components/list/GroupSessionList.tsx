@@ -3,7 +3,11 @@ import { ChevronRight, MessageCircle, Plus, Rocket, Users } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { useI18n } from "../../../../../core/i18n/context";
-import type { GroupCharacterPreview, GroupSessionPreview, Character } from "../../../../../core/storage/schemas";
+import type {
+  GroupCharacterPreview,
+  GroupSessionPreview,
+  Character,
+} from "../../../../../core/storage/schemas";
 
 type GroupListItem = Pick<
   GroupSessionPreview | GroupCharacterPreview,
@@ -14,6 +18,7 @@ import { useAvatar } from "../../../../hooks/useAvatar";
 import { useRocketEasterEgg } from "../../../../hooks/useRocketEasterEgg";
 import { AvatarImage } from "../../../../components/AvatarImage";
 import { formatTimeAgo } from "../../utils/formatTimeAgo";
+import { isRenderableImageUrl } from "../../../../../core/utils/image";
 
 export function GroupSessionList({
   groups,
@@ -208,11 +213,7 @@ export function GroupSessionSkeleton() {
       {[0, 1, 2].map((index) => (
         <div
           key={index}
-          className={cn(
-            "h-20 animate-pulse p-4",
-            "rounded-2xl",
-            "border border-fg/5 bg-fg/5",
-          )}
+          className={cn("h-20 animate-pulse p-4", "rounded-2xl", "border border-fg/5 bg-fg/5")}
         >
           <div className="flex items-center gap-3">
             <div className="h-12 w-12 rounded-full bg-fg/10" />
@@ -260,11 +261,7 @@ export function EmptyState() {
 }
 
 function isImageLike(s?: string) {
-  if (!s) return false;
-  const lower = s.toLowerCase();
-  return (
-    lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("data:image")
-  );
+  return isRenderableImageUrl(s);
 }
 
 const CharacterMiniAvatar = memo(({ character }: { character: Character }) => {
@@ -402,10 +399,7 @@ const GroupSessionCard = memo(
           </p>
         </div>
 
-        <motion.div
-          animate={{ rotate: isExpanded ? 90 : 0 }}
-          transition={{ duration: 0.15 }}
-        >
+        <motion.div animate={{ rotate: isExpanded ? 90 : 0 }} transition={{ duration: 0.15 }}>
           <ChevronRight className="h-4 w-4 text-fg/30" />
         </motion.div>
       </motion.button>

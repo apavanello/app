@@ -3,6 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { User, MessageSquare, Sparkles } from "lucide-react";
 import { cn, typography } from "../../../design-tokens";
 import { useI18n } from "../../../../core/i18n/context";
+import { loadAvatar } from "../../../../core/storage/avatars";
+import { convertToImageUrl } from "../../../../core/storage/images";
+import { isRenderableImageUrl } from "../../../../core/utils/image";
 
 interface DraftScene {
   id: string;
@@ -27,16 +30,19 @@ interface CharacterPreviewCardProps {
   draft: DraftCharacter;
   compact?: boolean;
   sessionId?: string;
+  targetCharacterId?: string;
 }
 
 interface UploadedImage {
   data: string;
+  assetId?: string | null;
 }
 
 export function CharacterPreviewCard({
   draft,
   compact = false,
   sessionId,
+  targetCharacterId,
 }: CharacterPreviewCardProps) {
   const { t } = useI18n();
   const hasAvatar = draft.avatarPath && draft.avatarPath.length > 0;
@@ -48,14 +54,17 @@ export function CharacterPreviewCard({
 
   // Resolve images
   useEffect(() => {
-    const resolveImage = async (path: string | null, setSrc: (s: string | null) => void) => {
+    const resolveImage = async (
+      path: string | null,
+      kind: "avatar" | "background",
+      setSrc: (s: string | null) => void,
+    ) => {
       if (!path) {
         setSrc(null);
         return;
       }
 
-      // If it's explicitly a data URI, use it
-      if (path.startsWith("data:")) {
+      if (isRenderableImageUrl(path)) {
         setSrc(path);
         return;
       }
@@ -69,7 +78,14 @@ export function CharacterPreviewCard({
             imageId: path,
           });
           if (img) {
-            setSrc(img.data.startsWith("data:") ? img.data : `data:image/png;base64,${img.data}`);
+            if (img.data && isRenderableImageUrl(img.data)) {
+              setSrc(img.data);
+              return;
+            }
+            if (img.assetId) {
+              setSrc((await convertToImageUrl(img.assetId)) ?? null);
+              return;
+            }
             return;
           }
         } catch (e) {
@@ -77,14 +93,25 @@ export function CharacterPreviewCard({
         }
       }
 
-      // Fallback: assume it's raw base64 if not resolved as ID
-      // Or if it's a long string, it's definitely base64
-      setSrc(`data:image/png;base64,${path}`);
+      try {
+        if (kind === "avatar" && targetCharacterId) {
+          setSrc((await loadAvatar("character", targetCharacterId, path)) ?? null);
+          return;
+        }
+        if (kind === "background") {
+          setSrc((await convertToImageUrl(path)) ?? null);
+          return;
+        }
+      } catch (error) {
+        console.error("Failed to resolve persisted preview image:", path, error);
+      }
+
+      setSrc(null);
     };
 
-    resolveImage(draft.avatarPath, setAvatarSrc);
-    resolveImage(draft.backgroundImagePath, setBgSrc);
-  }, [draft.avatarPath, draft.backgroundImagePath, sessionId]);
+    resolveImage(draft.avatarPath, "avatar", setAvatarSrc);
+    resolveImage(draft.backgroundImagePath, "background", setBgSrc);
+  }, [draft.avatarPath, draft.backgroundImagePath, sessionId, targetCharacterId]);
 
   return (
     <div className="rounded-2xl border border-fg/10 bg-fg/5 overflow-hidden">
@@ -148,7 +175,9 @@ export function CharacterPreviewCard({
         {/* Description Preview */}
         {!compact && previewDescription && (
           <div className="mt-4">
-            <p className="text-xs text-fg/40 uppercase tracking-wider mb-1">{t("characters.preview.description")}</p>
+            <p className="text-xs text-fg/40 uppercase tracking-wider mb-1">
+              {t("characters.preview.description")}
+            </p>
             <p className="text-sm text-fg/70 line-clamp-3">{previewDescription}</p>
           </div>
         )}
@@ -156,7 +185,9 @@ export function CharacterPreviewCard({
         {/* Scene Preview */}
         {!compact && defaultScene && (
           <div className="mt-4">
-            <p className="text-xs text-fg/40 uppercase tracking-wider mb-1">{t("characters.preview.startingScene")}</p>
+            <p className="text-xs text-fg/40 uppercase tracking-wider mb-1">
+              {t("characters.preview.startingScene")}
+            </p>
             <p className="text-sm text-fg/60 italic line-clamp-2">
               "{defaultScene.content.slice(0, 150)}
               {defaultScene.content.length > 150 ? "..." : ""}"

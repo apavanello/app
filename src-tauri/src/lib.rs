@@ -328,6 +328,7 @@ pub fn run() {
             storage_manager::media::storage_delete_image,
             storage_manager::media::storage_save_avatar,
             storage_manager::media::storage_load_avatar,
+            storage_manager::media::storage_get_avatar_path,
             storage_manager::media::storage_delete_avatar,
             storage_manager::media::generate_avatar_gradient,
             storage_manager::media::storage_save_session_attachment,

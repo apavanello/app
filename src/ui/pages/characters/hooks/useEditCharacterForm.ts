@@ -24,6 +24,7 @@ import {
   APP_DEFAULT_TEMPLATE_ID,
   isSystemPromptTemplate,
 } from "../../../../core/prompts/constants";
+import { isRenderableImageUrl } from "../../../../core/utils/image";
 
 type EditCharacterState = {
   loading: boolean;
@@ -178,6 +179,12 @@ export function useEditCharacterForm(characterId: string | undefined) {
     voiceConfig: string;
     voiceAutoplay: boolean;
   } | null>(null);
+  const persistedMediaRef = useRef<{
+    avatarFilename?: string;
+    avatarUrl?: string;
+    backgroundImageId?: string;
+    backgroundImageUrl?: string;
+  }>({});
 
   const setError = useCallback(
     (value: string | null) => dispatch({ type: "SET_ERROR", payload: value }),
@@ -250,7 +257,7 @@ export function useEditCharacterForm(characterId: string | undefined) {
 
       if (
         backgroundImage &&
-        !backgroundImage.startsWith("data:") &&
+        !isRenderableImageUrl(backgroundImage) &&
         backgroundImage.length === 36
       ) {
         try {
@@ -261,6 +268,13 @@ export function useEditCharacterForm(characterId: string | undefined) {
           console.warn("Failed to convert background image ID to URL:", err);
         }
       }
+
+      persistedMediaRef.current = {
+        avatarFilename: character.avatarPath ?? undefined,
+        avatarUrl: loadedAvatarPath || undefined,
+        backgroundImageId: character.backgroundImagePath ?? undefined,
+        backgroundImageUrl: backgroundImage || undefined,
+      };
 
       setFields({
         name: character.name,
@@ -429,7 +443,11 @@ export function useEditCharacterForm(characterId: string | undefined) {
             invalidateAvatarCache("character", characterId);
           }
         } else {
-          avatarFilename = state.avatarPath;
+          avatarFilename =
+            persistedMediaRef.current.avatarUrl &&
+            state.avatarPath === persistedMediaRef.current.avatarUrl
+              ? persistedMediaRef.current.avatarFilename
+              : state.avatarPath;
         }
       } else {
         invalidateAvatarCache("character", characterId);
@@ -438,7 +456,10 @@ export function useEditCharacterForm(characterId: string | undefined) {
       const backgroundImageId = state.backgroundImagePath
         ? state.backgroundImagePath.startsWith("data:")
           ? await convertToImageRef(state.backgroundImagePath)
-          : state.backgroundImagePath
+          : persistedMediaRef.current.backgroundImageUrl &&
+              state.backgroundImagePath === persistedMediaRef.current.backgroundImageUrl
+            ? persistedMediaRef.current.backgroundImageId
+            : state.backgroundImagePath
         : undefined;
 
       await saveCharacter({

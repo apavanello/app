@@ -108,7 +108,7 @@ pub fn creation_helper_get_uploaded_image(
     image_id: String,
 ) -> Result<Option<UploadedImage>, String> {
     let _ = service::get_session(&app, &session_id)?;
-    service::get_uploaded_image(&app, &session_id, &image_id)
+    service::get_uploaded_image_metadata(&session_id, &image_id)
 }
 
 #[tauri::command]
@@ -117,5 +117,5 @@ pub fn creation_helper_get_images(
     session_id: String,
 ) -> Result<Vec<UploadedImage>, String> {
     let _ = service::get_session(&app, &session_id)?;
-    service::get_all_uploaded_images(&app, &session_id)
+    service::get_all_uploaded_images_metadata(&session_id)
 }
