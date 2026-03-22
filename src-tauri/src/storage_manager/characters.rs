@@ -333,8 +333,22 @@ pub fn characters_list_typed<T>(app: &tauri::AppHandle) -> Result<Vec<T>, String
 where
     T: serde::de::DeserializeOwned,
 {
-    let data = characters_list(app.clone())?;
-    serde_json::from_str(&data).map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+    let conn = open_db(app)?;
+    let mut stmt = conn
+        .prepare("SELECT id FROM characters ORDER BY created_at ASC")
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let rows = stmt
+        .query_map([], |r| Ok(r.get::<_, String>(0)?))
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        let id = row.map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        out.push(read_character(&conn, &id)?);
+    }
+
+    serde_json::from_value(JsonValue::Array(out))
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
 }
 
 pub fn character_upsert_typed<T, R>(app: &tauri::AppHandle, character: &T) -> Result<R, String>

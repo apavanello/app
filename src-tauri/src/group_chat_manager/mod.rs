@@ -1591,9 +1591,9 @@ async fn process_group_dynamic_memory_cycle(
     let conn = pool.get_connection()?;
 
     // Load recent messages
-    let messages_json =
-        group_sessions::group_messages_list_internal(&conn, &session.id, 100, None, None)?;
-    let messages: Vec<GroupMessage> = serde_json::from_str(&messages_json).unwrap_or_default();
+    let messages =
+        group_sessions::group_messages_list_internal_typed(&conn, &session.id, 100, None, None)
+            .unwrap_or_default();
 
     let total_messages = messages.len();
     let total_convo = match conn.query_row(
@@ -3379,11 +3379,7 @@ fn load_recent_group_messages(
     session_id: &str,
     limit: i32,
 ) -> Result<Vec<GroupMessage>, String> {
-    let messages_json =
-        group_sessions::group_messages_list_internal(conn, session_id, limit, None, None)?;
-    let messages: Vec<GroupMessage> = serde_json::from_str(&messages_json)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    Ok(messages)
+    group_sessions::group_messages_list_internal_typed(conn, session_id, limit, None, None)
 }
 
 /// Build the full context for character selection
@@ -3392,20 +3388,12 @@ fn build_selection_context(
     session_id: &str,
     user_message: &str,
 ) -> Result<GroupChatContext, String> {
-    let session_json = group_sessions::group_session_get_internal(conn, session_id)?;
-    let session: GroupSession = serde_json::from_str(&session_json).map_err(|e| {
-        crate::utils::err_msg(
-            module_path!(),
-            line!(),
-            format!("Failed to parse session: {}", e),
-        )
-    })?;
+    let session = group_sessions::group_session_get_internal_typed(conn, session_id)?;
 
     let characters = load_characters_info(conn, &session.character_ids)?;
 
-    let stats_json = group_sessions::group_participation_stats_internal(conn, session_id)?;
-    let participation_stats: Vec<GroupParticipation> = serde_json::from_str(&stats_json)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let participation_stats =
+        group_sessions::group_participation_stats_internal_typed(conn, session_id)?;
 
     // Load more messages for selection context (selection needs good context for fair decisions)
     let recent_messages = load_recent_group_messages(conn, session_id, 30)?;
@@ -5051,9 +5039,8 @@ pub async fn group_chat_send(
         &used_lorebook_entries,
     )?;
 
-    let stats_json = group_sessions::group_participation_stats_internal(&conn, &session_id)?;
-    let participation_stats: Vec<GroupParticipation> = serde_json::from_str(&stats_json)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let participation_stats =
+        group_sessions::group_participation_stats_internal_typed(&conn, &session_id)?;
 
     let response = GroupChatResponse {
         message,
@@ -5083,9 +5070,7 @@ pub async fn group_chat_send(
     );
 
     let conn = pool.get_connection()?;
-    let session_json = group_sessions::group_session_get_internal(&conn, &session_id)?;
-    let mut updated_session: GroupSession = serde_json::from_str(&session_json)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let mut updated_session = group_sessions::group_session_get_internal_typed(&conn, &session_id)?;
     if updated_session.memory_type == "dynamic" {
         if let Err(e) =
             process_group_dynamic_memory_cycle(&app, &mut updated_session, &settings, &pool).await
@@ -5119,9 +5104,7 @@ pub async fn group_chat_retry_dynamic_memory(
 
     let settings = load_settings(&app)?;
     let conn = pool.get_connection()?;
-    let session_json = group_sessions::group_session_get_internal(&conn, &session_id)?;
-    let mut session: GroupSession = serde_json::from_str(&session_json)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let mut session = group_sessions::group_session_get_internal_typed(&conn, &session_id)?;
     if session.memory_type != "dynamic" {
         log_info(
             &app,
@@ -5361,14 +5344,11 @@ pub async fn group_chat_regenerate(
         update_participation(&conn, &session_id, &selected_character_id, turn_number)?;
     }
 
-    let stats_json = group_sessions::group_participation_stats_internal(&conn, &session_id)?;
-    let participation_stats: Vec<GroupParticipation> = serde_json::from_str(&stats_json)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let participation_stats =
+        group_sessions::group_participation_stats_internal_typed(&conn, &session_id)?;
 
-    let messages_json =
-        group_sessions::group_messages_list_internal(&conn, &session_id, 100, None, None)?;
-    let messages: Vec<GroupMessage> = serde_json::from_str(&messages_json)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let messages =
+        group_sessions::group_messages_list_internal_typed(&conn, &session_id, 100, None, None)?;
     let message = messages
         .into_iter()
         .find(|m| m.id == message_id)
@@ -5557,9 +5537,8 @@ pub async fn group_chat_continue(
         &used_lorebook_entries,
     )?;
 
-    let stats_json = group_sessions::group_participation_stats_internal(&conn, &session_id)?;
-    let participation_stats: Vec<GroupParticipation> = serde_json::from_str(&stats_json)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let participation_stats =
+        group_sessions::group_participation_stats_internal_typed(&conn, &session_id)?;
 
     let response = GroupChatResponse {
         message,
@@ -5631,29 +5610,15 @@ pub async fn group_chat_generate_user_reply(
     let settings = load_settings(&app)?;
     let conn = pool.get_connection()?;
 
-    let session_json = group_sessions::group_session_get_internal(&conn, &session_id)?;
-    let session: GroupSession = serde_json::from_str(&session_json).map_err(|e| {
-        crate::utils::err_msg(
-            module_path!(),
-            line!(),
-            format!("Failed to parse session: {}", e),
-        )
-    })?;
+    let session = group_sessions::group_session_get_internal_typed(&conn, &session_id)?;
 
     let personas = load_personas(&app)?;
     let persona = personas
         .iter()
         .find(|p| Some(&p.id) == session.persona_id.as_ref());
 
-    let messages_json =
-        group_sessions::group_messages_list_internal(&conn, &session_id, 10, None, None)?;
-    let recent_msgs: Vec<GroupMessage> = serde_json::from_str(&messages_json).map_err(|e| {
-        crate::utils::err_msg(
-            module_path!(),
-            line!(),
-            format!("Failed to parse messages: {}", e),
-        )
-    })?;
+    let recent_msgs =
+        group_sessions::group_messages_list_internal_typed(&conn, &session_id, 10, None, None)?;
 
     if recent_msgs.is_empty() {
         return Err(crate::utils::err_msg(

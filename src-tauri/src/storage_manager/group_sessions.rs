@@ -24,6 +24,14 @@ pub fn group_session_get_internal(conn: &Connection, id: &str) -> Result<String,
     }
 }
 
+pub fn group_session_get_internal_typed(
+    conn: &Connection,
+    id: &str,
+) -> Result<GroupSession, String> {
+    read_group_session(conn, id)?
+        .ok_or_else(|| crate::utils::err_msg(module_path!(), line!(), "Session not found"))
+}
+
 /// Internal function to get participation stats without Tauri State
 pub fn group_participation_stats_internal(
     conn: &Connection,
@@ -32,6 +40,13 @@ pub fn group_participation_stats_internal(
     let stats = read_group_participation(conn, session_id)?;
     serde_json::to_string(&stats)
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+pub fn group_participation_stats_internal_typed(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<Vec<GroupParticipation>, String> {
+    read_group_participation(conn, session_id)
 }
 
 /// Internal function to list messages without Tauri State
@@ -45,6 +60,16 @@ pub fn group_messages_list_internal(
     let messages = read_group_messages(conn, session_id, limit, before_created_at, before_id)?;
     serde_json::to_string(&messages)
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+pub fn group_messages_list_internal_typed(
+    conn: &Connection,
+    session_id: &str,
+    limit: i32,
+    before_created_at: Option<i64>,
+    before_id: Option<&str>,
+) -> Result<Vec<GroupMessage>, String> {
+    read_group_messages(conn, session_id, limit, before_created_at, before_id)
 }
 
 // ============================================================================

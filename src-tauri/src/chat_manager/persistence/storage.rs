@@ -4,8 +4,8 @@ use crate::storage_manager::{
     characters::characters_list_typed,
     personas::personas_list_typed,
     sessions::{
-        messages_list_pinned_typed, messages_list_typed, messages_upsert_batch_typed,
-        session_get_meta_typed, session_upsert_meta_typed,
+        messages_list_internal, messages_list_pinned_internal, messages_upsert_batch_internal,
+        session_get_meta_internal, session_upsert_meta_internal,
     },
     settings::{read_settings_typed, write_settings_typed},
 };
@@ -191,11 +191,11 @@ pub fn load_personas(app: &AppHandle) -> Result<Vec<Persona>, String> {
 }
 
 pub fn load_session(app: &AppHandle, session_id: &str) -> Result<Option<Session>, String> {
-    let Some(mut session): Option<Session> = session_get_meta_typed(app, session_id)? else {
+    let Some(mut session) = session_get_meta_internal(app, session_id)? else {
         return Ok(None);
     };
-    let recent: Vec<StoredMessage> = messages_list_typed(app, session_id, 120, None, None)?;
-    let pinned: Vec<StoredMessage> = messages_list_pinned_typed(app, session_id)?;
+    let recent = messages_list_internal(app, session_id, 120, None, None)?;
+    let pinned = messages_list_pinned_internal(app, session_id)?;
 
     let mut by_id = std::collections::HashMap::<String, StoredMessage>::new();
     for m in pinned.into_iter().chain(recent.into_iter()) {
@@ -214,10 +214,10 @@ pub fn load_session(app: &AppHandle, session_id: &str) -> Result<Option<Session>
 pub fn save_session(app: &AppHandle, session: &Session) -> Result<(), String> {
     let mut meta = session.clone();
     meta.messages = Vec::new();
-    session_upsert_meta_typed(app, &meta)?;
+    session_upsert_meta_internal(app, &meta)?;
 
     if let Some(last) = session.messages.last() {
-        messages_upsert_batch_typed(app, &session.id, std::slice::from_ref(last))?;
+        messages_upsert_batch_internal(app, &session.id, std::slice::from_ref(last))?;
     }
     Ok(())
 }

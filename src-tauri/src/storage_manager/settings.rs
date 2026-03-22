@@ -429,7 +429,7 @@ pub fn read_settings_typed<T>(app: &tauri::AppHandle) -> Result<Option<T>, Strin
 where
     T: serde::de::DeserializeOwned,
 {
-    storage_read_settings(app.clone())?
+    db_read_settings_json(app)?
         .map(|data| {
             serde_json::from_str(&data)
                 .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
@@ -443,7 +443,13 @@ where
 {
     let data = serde_json::to_string(value)
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    storage_write_settings(app.clone(), data)
+    db_write_settings_json(app, data.clone())?;
+    if let Ok(json) = serde_json::from_str::<JsonValue>(&data) {
+        if let Some(app_state) = json.get("appState") {
+            sync_content_filter_from_app_state(app, app_state);
+        }
+    }
+    Ok(())
 }
 
 fn ensure_settings_row(conn: &rusqlite::Connection) -> Result<(), String> {

@@ -7,8 +7,79 @@ pub fn personas_list_typed<T>(app: &tauri::AppHandle) -> Result<Vec<T>, String>
 where
     T: serde::de::DeserializeOwned,
 {
-    let data = personas_list(app.clone())?;
-    serde_json::from_str(&data).map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+    let conn = open_db(app)?;
+    let mut stmt = conn.prepare("SELECT id, title, description, nickname, avatar_path, avatar_crop_x, avatar_crop_y, avatar_crop_scale, design_description, design_reference_image_ids, is_default, created_at, updated_at FROM personas ORDER BY created_at ASC").map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, Option<String>>(3)?,
+                r.get::<_, Option<String>>(4)?,
+                r.get::<_, Option<f64>>(5)?,
+                r.get::<_, Option<f64>>(6)?,
+                r.get::<_, Option<f64>>(7)?,
+                r.get::<_, Option<String>>(8)?,
+                r.get::<_, Option<String>>(9)?,
+                r.get::<_, i64>(10)?,
+                r.get::<_, i64>(11)?,
+                r.get::<_, i64>(12)?,
+            ))
+        })
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        let (
+            id,
+            title,
+            description,
+            nickname,
+            avatar_path,
+            avatar_crop_x,
+            avatar_crop_y,
+            avatar_crop_scale,
+            design_description,
+            design_reference_image_ids,
+            is_default,
+            created_at,
+            updated_at,
+        ) = row.map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+        let mut obj = JsonMap::new();
+        obj.insert("id".into(), JsonValue::String(id));
+        obj.insert("title".into(), JsonValue::String(title));
+        obj.insert("description".into(), JsonValue::String(description));
+        if let Some(value) = nickname {
+            obj.insert("nickname".into(), JsonValue::String(value));
+        }
+        if let Some(value) = avatar_path {
+            obj.insert("avatarPath".into(), JsonValue::String(value));
+        }
+        if let (Some(x), Some(y), Some(scale)) = (avatar_crop_x, avatar_crop_y, avatar_crop_scale) {
+            let mut crop = JsonMap::new();
+            crop.insert("x".into(), JsonValue::from(x));
+            crop.insert("y".into(), JsonValue::from(y));
+            crop.insert("scale".into(), JsonValue::from(scale));
+            obj.insert("avatarCrop".into(), JsonValue::Object(crop));
+        }
+        if let Some(value) = design_description {
+            obj.insert("designDescription".into(), JsonValue::String(value));
+        }
+        if let Some(value) = design_reference_image_ids {
+            if let Ok(parsed) = serde_json::from_str::<Vec<String>>(&value) {
+                obj.insert("designReferenceImageIds".into(), serde_json::json!(parsed));
+            }
+        }
+        obj.insert("isDefault".into(), JsonValue::Bool(is_default != 0));
+        obj.insert("createdAt".into(), JsonValue::from(created_at));
+        obj.insert("updatedAt".into(), JsonValue::from(updated_at));
+        out.push(JsonValue::Object(obj));
+    }
+
+    serde_json::from_value(JsonValue::Array(out))
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
 }
 
 pub fn persona_default_get_typed<T>(app: &tauri::AppHandle) -> Result<Option<T>, String>
