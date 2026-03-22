@@ -185,11 +185,11 @@ export async function speakDeviceTts(options: {
 }): Promise<void> {
   await speak({
     text: options.text,
-    voiceId: options.voiceId,
-    language: options.language,
-    rate: options.rate,
-    pitch: options.pitch,
-    volume: options.volume,
+    voiceId: options.voiceId ?? null,
+    language: options.language ?? null,
+    rate: options.rate ?? null,
+    pitch: options.pitch ?? null,
+    volume: options.volume ?? null,
     queueMode: "flush",
   });
 }
