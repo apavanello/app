@@ -3,6 +3,50 @@ use serde_json::{Map as JsonMap, Value as JsonValue};
 
 use super::db::{now_ms, open_db};
 
+pub fn personas_list_typed<T>(app: &tauri::AppHandle) -> Result<Vec<T>, String>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let data = personas_list(app.clone())?;
+    serde_json::from_str(&data).map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+pub fn persona_default_get_typed<T>(app: &tauri::AppHandle) -> Result<Option<T>, String>
+where
+    T: serde::de::DeserializeOwned,
+{
+    persona_default_get(app.clone())?
+        .map(|data| {
+            serde_json::from_str(&data)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+        })
+        .transpose()
+}
+
+pub fn persona_upsert_typed<T, R>(app: &tauri::AppHandle, persona: &T) -> Result<R, String>
+where
+    T: serde::Serialize,
+    R: serde::de::DeserializeOwned,
+{
+    let data = serde_json::to_string(persona)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let result = persona_upsert(app.clone(), data)?;
+    serde_json::from_str(&result)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+pub fn default_persona_id(app: tauri::AppHandle) -> Option<String> {
+    persona_default_get_typed::<JsonValue>(&app)
+        .ok()
+        .flatten()
+        .and_then(|persona| {
+            persona
+                .get("id")
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string())
+        })
+}
+
 #[tauri::command]
 pub fn personas_list(app: tauri::AppHandle) -> Result<String, String> {
     let conn = open_db(&app)?;

@@ -1,13 +1,13 @@
 use tauri::AppHandle;
 
 use crate::storage_manager::{
-    characters::characters_list,
-    personas::personas_list,
+    characters::characters_list_typed,
+    personas::personas_list_typed,
     sessions::{
-        messages_list, messages_list_pinned, messages_upsert_batch, session_get_meta,
-        session_upsert_meta,
+        messages_list_pinned_typed, messages_list_typed, messages_upsert_batch_typed,
+        session_get_meta_typed, session_upsert_meta_typed,
     },
-    settings::{storage_read_settings, storage_write_settings},
+    settings::{read_settings_typed, write_settings_typed},
 };
 
 use super::prompt_engine;
@@ -127,17 +127,11 @@ pub fn default_character_rules(pure_mode_level: &str) -> Vec<String> {
 }
 
 pub fn load_settings(app: &AppHandle) -> Result<Settings, String> {
-    let json = storage_read_settings(app.clone())?;
-    if let Some(data) = json {
-        serde_json::from_str(&data)
-            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+    if let Some(settings) = read_settings_typed(app)? {
+        Ok(settings)
     } else {
         let defaults = default_settings();
-        storage_write_settings(
-            app.clone(),
-            serde_json::to_string(&defaults)
-                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?,
-        )?;
+        write_settings_typed(app, &defaults)?;
         Ok(defaults)
     }
 }
@@ -189,29 +183,19 @@ fn default_settings() -> Settings {
 }
 
 pub fn load_characters(app: &AppHandle) -> Result<Vec<Character>, String> {
-    let data = characters_list(app.clone())?;
-    serde_json::from_str(&data).map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+    characters_list_typed(app)
 }
 
 pub fn load_personas(app: &AppHandle) -> Result<Vec<Persona>, String> {
-    let data = personas_list(app.clone())?;
-    serde_json::from_str(&data).map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+    personas_list_typed(app)
 }
 
 pub fn load_session(app: &AppHandle, session_id: &str) -> Result<Option<Session>, String> {
-    let meta = session_get_meta(app.clone(), session_id.to_string())?;
-    let Some(meta_json) = meta else {
+    let Some(mut session): Option<Session> = session_get_meta_typed(app, session_id)? else {
         return Ok(None);
     };
-    let mut session: Session = serde_json::from_str(&meta_json)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-
-    let recent_json = messages_list(app.clone(), session_id.to_string(), 120, None, None)?;
-    let pinned_json = messages_list_pinned(app.clone(), session_id.to_string())?;
-    let recent: Vec<StoredMessage> = serde_json::from_str(&recent_json)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    let pinned: Vec<StoredMessage> = serde_json::from_str(&pinned_json)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let recent: Vec<StoredMessage> = messages_list_typed(app, session_id, 120, None, None)?;
+    let pinned: Vec<StoredMessage> = messages_list_pinned_typed(app, session_id)?;
 
     let mut by_id = std::collections::HashMap::<String, StoredMessage>::new();
     for m in pinned.into_iter().chain(recent.into_iter()) {
@@ -230,14 +214,10 @@ pub fn load_session(app: &AppHandle, session_id: &str) -> Result<Option<Session>
 pub fn save_session(app: &AppHandle, session: &Session) -> Result<(), String> {
     let mut meta = session.clone();
     meta.messages = Vec::new();
-    let meta_json = serde_json::to_string(&meta)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    session_upsert_meta(app.clone(), meta_json)?;
+    session_upsert_meta_typed(app, &meta)?;
 
     if let Some(last) = session.messages.last() {
-        let payload = serde_json::to_string(&vec![last])
-            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-        messages_upsert_batch(app.clone(), session.id.clone(), payload)?;
+        messages_upsert_batch_typed(app, &session.id, std::slice::from_ref(last))?;
     }
     Ok(())
 }

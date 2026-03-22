@@ -710,6 +710,71 @@ pub fn session_conversation_count(
     Ok(count)
 }
 
+pub fn session_get_meta_typed<T>(app: &tauri::AppHandle, id: &str) -> Result<Option<T>, String>
+where
+    T: serde::de::DeserializeOwned,
+{
+    session_get_meta(app.clone(), id.to_string())?
+        .map(|data| {
+            serde_json::from_str(&data)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+        })
+        .transpose()
+}
+
+pub fn messages_list_typed<T>(
+    app: &tauri::AppHandle,
+    session_id: &str,
+    limit: i64,
+    before_created_at: Option<i64>,
+    before_id: Option<&str>,
+) -> Result<Vec<T>, String>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let data = messages_list(
+        app.clone(),
+        session_id.to_string(),
+        limit,
+        before_created_at,
+        before_id.map(|id| id.to_string()),
+    )?;
+    serde_json::from_str(&data).map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+pub fn messages_list_pinned_typed<T>(
+    app: &tauri::AppHandle,
+    session_id: &str,
+) -> Result<Vec<T>, String>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let data = messages_list_pinned(app.clone(), session_id.to_string())?;
+    serde_json::from_str(&data).map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+pub fn session_upsert_meta_typed<T>(app: &tauri::AppHandle, session: &T) -> Result<(), String>
+where
+    T: serde::Serialize,
+{
+    let data = serde_json::to_string(session)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    session_upsert_meta(app.clone(), data)
+}
+
+pub fn messages_upsert_batch_typed<T>(
+    app: &tauri::AppHandle,
+    session_id: &str,
+    messages: &[T],
+) -> Result<(), String>
+where
+    T: serde::Serialize,
+{
+    let data = serde_json::to_string(messages)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    messages_upsert_batch(app.clone(), session_id.to_string(), data)
+}
+
 #[tauri::command]
 pub fn messages_list(
     app: tauri::AppHandle,

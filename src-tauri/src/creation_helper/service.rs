@@ -358,9 +358,7 @@ fn load_target_draft(
 }
 
 fn load_character_draft(app: &AppHandle, target_id: &str) -> Result<DraftCharacter, String> {
-    let raw = characters_storage::characters_list(app.clone())?;
-    let characters: Vec<Value> = serde_json::from_str(&raw)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let characters: Vec<Value> = characters_storage::characters_list_typed(app)?;
     let target = characters
         .into_iter()
         .find(|c| c.get("id").and_then(|v| v.as_str()) == Some(target_id))
@@ -432,9 +430,7 @@ fn load_character_draft(app: &AppHandle, target_id: &str) -> Result<DraftCharact
 }
 
 fn load_persona_draft(app: &AppHandle, target_id: &str) -> Result<DraftCharacter, String> {
-    let raw = personas_storage::personas_list(app.clone())?;
-    let personas: Vec<Value> = serde_json::from_str(&raw)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let personas: Vec<Value> = personas_storage::personas_list_typed(app)?;
     let target = personas
         .into_iter()
         .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(target_id))
@@ -1732,11 +1728,8 @@ async fn execute_tool(
                 "draft": session.draft
             })
         }
-        "list_personas" => match personas_storage::personas_list(app.clone()) {
-            Ok(raw) => match serde_json::from_str::<Value>(&raw) {
-                Ok(personas) => json!({ "success": true, "personas": personas }),
-                Err(e) => json!({ "success": false, "error": e.to_string() }),
-            },
+        "list_personas" => match personas_storage::personas_list_typed::<Value>(app) {
+            Ok(personas) => json!({ "success": true, "personas": personas }),
             Err(e) => json!({ "success": false, "error": e }),
         },
         "upsert_persona" => {
@@ -1753,11 +1746,8 @@ async fn execute_tool(
                     "createdAt": now,
                     "updatedAt": now,
                 });
-                match personas_storage::persona_upsert(app.clone(), persona_json.to_string()) {
-                    Ok(raw) => match serde_json::from_str::<Value>(&raw) {
-                        Ok(persona) => json!({ "success": true, "persona": persona }),
-                        Err(e) => json!({ "success": false, "error": e.to_string() }),
-                    },
+                match personas_storage::persona_upsert_typed::<_, Value>(app, &persona_json) {
+                    Ok(persona) => json!({ "success": true, "persona": persona }),
                     Err(e) => json!({ "success": false, "error": e }),
                 }
             } else {
@@ -1774,11 +1764,8 @@ async fn execute_tool(
                 json!({ "success": false, "error": "Missing 'id' argument" })
             }
         }
-        "get_default_persona" => match personas_storage::persona_default_get(app.clone()) {
-            Ok(Some(raw)) => match serde_json::from_str::<Value>(&raw) {
-                Ok(persona) => json!({ "success": true, "persona": persona }),
-                Err(e) => json!({ "success": false, "error": e.to_string() }),
-            },
+        "get_default_persona" => match personas_storage::persona_default_get_typed::<Value>(app) {
+            Ok(Some(persona)) => json!({ "success": true, "persona": persona }),
             Ok(None) => json!({ "success": true, "persona": Value::Null }),
             Err(e) => json!({ "success": false, "error": e }),
         },
@@ -1789,9 +1776,9 @@ async fn execute_tool(
                 match resolve_uploaded_image_id(&session.id, image_id) {
                     Ok(Some(resolved_id)) => {
                         match get_uploaded_image(app, &session.id, &resolved_id) {
-                            Ok(Some(image)) => match personas_storage::personas_list(app.clone()) {
-                                Ok(raw) => match serde_json::from_str::<Value>(&raw) {
-                                    Ok(Value::Array(personas)) => {
+                            Ok(Some(image)) => {
+                                match personas_storage::personas_list_typed::<Value>(app) {
+                                    Ok(personas) => {
                                         if let Some(persona) = personas.iter().find_map(|p| {
                                             let id = p.get("id")?.as_str()?;
                                             if id != persona_id {
@@ -1815,21 +1802,14 @@ async fn execute_tool(
                                                     "avatarPath": image.data,
                                                     "isDefault": is_default.unwrap_or(false),
                                                 });
-                                                match personas_storage::persona_upsert(
-                                                    app.clone(),
-                                                    persona_json.to_string(),
+                                                match personas_storage::persona_upsert_typed::<
+                                                    _,
+                                                    Value,
+                                                >(
+                                                    app, &persona_json
                                                 ) {
-                                                    Ok(updated) => {
-                                                        match serde_json::from_str::<Value>(
-                                                            &updated,
-                                                        ) {
-                                                            Ok(persona) => {
-                                                                json!({ "success": true, "persona": persona })
-                                                            }
-                                                            Err(e) => {
-                                                                json!({ "success": false, "error": e.to_string() })
-                                                            }
-                                                        }
+                                                    Ok(persona) => {
+                                                        json!({ "success": true, "persona": persona })
                                                     }
                                                     Err(e) => {
                                                         json!({ "success": false, "error": e })
@@ -1842,13 +1822,9 @@ async fn execute_tool(
                                             json!({ "success": false, "error": "Persona not found" })
                                         }
                                     }
-                                    Ok(_) => {
-                                        json!({ "success": false, "error": "Unexpected persona list format" })
-                                    }
-                                    Err(e) => json!({ "success": false, "error": e.to_string() }),
-                                },
-                                Err(e) => json!({ "success": false, "error": e }),
-                            },
+                                    Err(e) => json!({ "success": false, "error": e }),
+                                }
+                            }
                             Ok(None) => json!({ "success": false, "error": "Image not found" }),
                             Err(e) => json!({ "success": false, "error": e }),
                         }
@@ -3191,9 +3167,7 @@ fn apply_character_edit(
     target_id: &str,
     draft: &DraftCharacter,
 ) -> Result<(), String> {
-    let raw = characters_storage::characters_list(app.clone())?;
-    let mut characters: Vec<Value> = serde_json::from_str(&raw)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let mut characters: Vec<Value> = characters_storage::characters_list_typed(app)?;
     let mut target = characters
         .drain(..)
         .find(|c| c.get("id").and_then(|v| v.as_str()) == Some(target_id))
@@ -3236,9 +3210,7 @@ fn apply_character_edit(
     target["defaultModelId"] = json!(draft.default_model_id);
     target["promptTemplateId"] = json!(draft.prompt_template_id);
 
-    let payload = serde_json::to_string(&target)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    let _ = characters_storage::character_upsert(app.clone(), payload)?;
+    let _: Value = characters_storage::character_upsert_typed(app, &target)?;
     Ok(())
 }
 
@@ -3247,9 +3219,7 @@ fn apply_persona_edit(
     target_id: &str,
     draft: &DraftCharacter,
 ) -> Result<(), String> {
-    let raw = personas_storage::personas_list(app.clone())?;
-    let personas: Vec<Value> = serde_json::from_str(&raw)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let personas: Vec<Value> = personas_storage::personas_list_typed(app)?;
     let target = personas
         .into_iter()
         .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(target_id))
@@ -3280,11 +3250,7 @@ fn apply_persona_edit(
         "isDefault": is_default,
     });
 
-    let _ = personas_storage::persona_upsert(
-        app.clone(),
-        serde_json::to_string(&payload)
-            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?,
-    )?;
+    let _: Value = personas_storage::persona_upsert_typed(app, &payload)?;
     Ok(())
 }
 

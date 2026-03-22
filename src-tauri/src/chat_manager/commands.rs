@@ -49,7 +49,7 @@ use super::types::{
     SystemPromptEntry, SystemPromptTemplate,
 };
 use crate::storage_manager::sessions::{
-    messages_upsert_batch, session_conversation_count, session_upsert_meta,
+    messages_upsert_batch_typed, session_conversation_count, session_upsert_meta_typed,
 };
 use crate::utils::emit_debug;
 
@@ -7517,13 +7517,8 @@ pub async fn chat_add_message_attachment(
     // Persist meta + the updated message (even if it's not the last message).
     let mut meta = session.clone();
     meta.messages = Vec::new();
-    let meta_json = serde_json::to_string(&meta)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    session_upsert_meta(app.clone(), meta_json)?;
-
-    let payload = serde_json::to_string(&vec![updated_message.clone()])
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    messages_upsert_batch(app.clone(), session_id, payload)?;
+    session_upsert_meta_typed(&app, &meta)?;
+    messages_upsert_batch_typed(&app, &session_id, std::slice::from_ref(&updated_message))?;
 
     Ok(updated_message)
 }
@@ -7639,9 +7634,7 @@ pub async fn chat_generate_scene_image(
 
     let mut meta = session.clone();
     meta.messages = Vec::new();
-    let meta_json = serde_json::to_string(&meta)
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    if let Err(err) = session_upsert_meta(app.clone(), meta_json) {
+    if let Err(err) = session_upsert_meta_typed(&app, &meta) {
         cleanup_attachments(
             &app,
             std::slice::from_ref(&cleanup_attachment),
@@ -7650,9 +7643,9 @@ pub async fn chat_generate_scene_image(
         return Err(err);
     }
 
-    let payload = serde_json::to_string(&vec![updated_message.clone()])
-        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-    if let Err(err) = messages_upsert_batch(app.clone(), session_id, payload) {
+    if let Err(err) =
+        messages_upsert_batch_typed(&app, &session_id, std::slice::from_ref(&updated_message))
+    {
         cleanup_attachments(
             &app,
             std::slice::from_ref(&cleanup_attachment),

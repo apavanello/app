@@ -425,6 +425,27 @@ fn db_write_settings_json(app: &tauri::AppHandle, data: String) -> Result<(), St
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
 }
 
+pub fn read_settings_typed<T>(app: &tauri::AppHandle) -> Result<Option<T>, String>
+where
+    T: serde::de::DeserializeOwned,
+{
+    storage_read_settings(app.clone())?
+        .map(|data| {
+            serde_json::from_str(&data)
+                .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+        })
+        .transpose()
+}
+
+pub fn write_settings_typed<T>(app: &tauri::AppHandle, value: &T) -> Result<(), String>
+where
+    T: serde::Serialize,
+{
+    let data = serde_json::to_string(value)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    storage_write_settings(app.clone(), data)
+}
+
 fn ensure_settings_row(conn: &rusqlite::Connection) -> Result<(), String> {
     let now = now_ms() as i64;
     conn.execute(

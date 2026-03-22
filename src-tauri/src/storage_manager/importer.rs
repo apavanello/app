@@ -26,9 +26,9 @@ pub fn run_legacy_import(app: &tauri::AppHandle) -> Result<(), String> {
 
     let mut imported_any = false;
 
-    // Settings: trigger lazy import by calling storage_read_settings
+    // Settings: trigger lazy import by calling the typed settings loader
     if settings_path(app)?.exists() {
-        if let Ok(Some(_)) = super::settings::storage_read_settings(app.clone()) {
+        if let Ok(Some(_)) = super::settings::read_settings_typed::<JsonValue>(app) {
             imported_any = true;
         }
     }

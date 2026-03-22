@@ -1155,24 +1155,16 @@ pub async fn discovery_import_character(app: AppHandle, path: String) -> Result<
         "updatedAt": now
     });
 
-    let character_json = serde_json::to_string(&character).map_err(|e| {
+    let _: serde_json::Value = crate::storage_manager::characters::character_upsert_typed(
+        &app, &character,
+    )
+    .map_err(|e| {
         crate::utils::err_msg(
             module_path!(),
             line!(),
-            format!("Failed to serialize character: {}", e),
+            format!("Failed to save character to database: {}", e),
         )
     })?;
-
-    // Save to database using existing character_upsert command
-    crate::storage_manager::characters::character_upsert(app.clone(), character_json).map_err(
-        |e| {
-            crate::utils::err_msg(
-                module_path!(),
-                line!(),
-                format!("Failed to save character to database: {}", e),
-            )
-        },
-    )?;
 
     if let Some(lorebook) = lorebook {
         match crate::storage_manager::db::open_db(&app) {

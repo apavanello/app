@@ -3,7 +3,7 @@ use tauri::AppHandle;
 
 use crate::chat_manager::prompts;
 use crate::chat_manager::types::PromptScope;
-use crate::storage_manager::{settings::storage_read_settings, settings::storage_write_settings};
+use crate::storage_manager::settings::{read_settings_typed, write_settings_typed};
 use crate::utils::log_info;
 
 /// Current migration version
@@ -585,15 +585,7 @@ fn set_migration_version(app: &AppHandle, version: u32) -> Result<(), String> {
 /// file to explicitly include it for consistency.
 fn migrate_v0_to_v1(app: &AppHandle) -> Result<(), String> {
     // Settings migration - add systemPrompt field if missing
-    if let Ok(Some(settings_json)) = storage_read_settings(app.clone()) {
-        let mut settings: Value = serde_json::from_str(&settings_json).map_err(|e| {
-            crate::utils::err_msg(
-                module_path!(),
-                line!(),
-                format!("Failed to parse settings: {}", e),
-            )
-        })?;
-
+    if let Ok(Some(mut settings)) = read_settings_typed::<Value>(app) {
         let mut changed = false;
 
         // Add systemPrompt to root settings if not present
@@ -625,11 +617,7 @@ fn migrate_v0_to_v1(app: &AppHandle) -> Result<(), String> {
         }
 
         if changed {
-            storage_write_settings(
-                app.clone(),
-                serde_json::to_string(&settings)
-                    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?,
-            )?;
+            write_settings_typed(app, &settings)?;
             log_info(app, "migrations", "Settings migration completed");
         }
     }
@@ -1118,15 +1106,7 @@ fn migrate_v1_to_v2(app: &AppHandle) -> Result<(), String> {
     let _app_default_id = prompts::ensure_app_default_template(app)?;
 
     // Migrate Settings app-wide prompt
-    if let Ok(Some(settings_json)) = storage_read_settings(app.clone()) {
-        let mut settings: Value = serde_json::from_str(&settings_json).map_err(|e| {
-            crate::utils::err_msg(
-                module_path!(),
-                line!(),
-                format!("Failed to parse settings: {}", e),
-            )
-        })?;
-
+    if let Ok(Some(mut settings)) = read_settings_typed::<Value>(app) {
         let mut changed = false;
 
         if let Some(obj) = settings.as_object_mut() {
@@ -1199,11 +1179,7 @@ fn migrate_v1_to_v2(app: &AppHandle) -> Result<(), String> {
         }
 
         if changed {
-            storage_write_settings(
-                app.clone(),
-                serde_json::to_string(&settings)
-                    .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?,
-            )?;
+            write_settings_typed(app, &settings)?;
             log_info(
                 app,
                 "migrations",

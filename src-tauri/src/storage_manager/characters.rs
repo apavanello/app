@@ -329,6 +329,26 @@ fn read_character(conn: &rusqlite::Connection, id: &str) -> Result<JsonValue, St
     Ok(JsonValue::Object(root))
 }
 
+pub fn characters_list_typed<T>(app: &tauri::AppHandle) -> Result<Vec<T>, String>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let data = characters_list(app.clone())?;
+    serde_json::from_str(&data).map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
+pub fn character_upsert_typed<T, R>(app: &tauri::AppHandle, character: &T) -> Result<R, String>
+where
+    T: serde::Serialize,
+    R: serde::de::DeserializeOwned,
+{
+    let data = serde_json::to_string(character)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let result = character_upsert(app.clone(), data)?;
+    serde_json::from_str(&result)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))
+}
+
 #[tauri::command]
 pub fn characters_list(app: tauri::AppHandle) -> Result<String, String> {
     log_info(&app, "characters_list", "Listing all characters");

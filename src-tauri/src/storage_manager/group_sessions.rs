@@ -916,18 +916,7 @@ pub fn group_session_duplicate(
 
     // Use source persona_id, or fallback to default persona if source had none
     let final_persona_id = if source.persona_id.is_none() {
-        // Try to get default persona
-        match super::personas::persona_default_get(app) {
-            Ok(Some(default_persona_json)) => {
-                let default_persona: serde_json::Value =
-                    serde_json::from_str(&default_persona_json).unwrap_or(serde_json::json!({}));
-                default_persona
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            }
-            _ => None,
-        }
+        super::personas::default_persona_id(app.clone())
     } else {
         source.persona_id
     };
@@ -1005,18 +994,7 @@ pub fn group_session_duplicate_with_messages(
 
     // Use source persona_id, or fallback to default persona if source had none
     let final_persona_id = if source.persona_id.is_none() {
-        // Try to get default persona
-        match super::personas::persona_default_get(app) {
-            Ok(Some(default_persona_json)) => {
-                let default_persona: serde_json::Value =
-                    serde_json::from_str(&default_persona_json).unwrap_or(serde_json::json!({}));
-                default_persona
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            }
-            _ => None,
-        }
+        super::personas::default_persona_id(app.clone())
     } else {
         source.persona_id
     };
@@ -1390,18 +1368,7 @@ pub fn group_session_create(
 
     // Use provided persona_id, or fallback to default persona
     let final_persona_id = if persona_id.is_none() {
-        // Try to get default persona
-        match super::personas::persona_default_get(app) {
-            Ok(Some(default_persona_json)) => {
-                let default_persona: serde_json::Value =
-                    serde_json::from_str(&default_persona_json).unwrap_or(serde_json::json!({}));
-                default_persona
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            }
-            _ => None,
-        }
+        super::personas::default_persona_id(app.clone())
     } else {
         persona_id
     };

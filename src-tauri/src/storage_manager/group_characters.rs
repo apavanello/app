@@ -305,17 +305,7 @@ pub fn group_create(
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
     let final_persona_id = if persona_id.is_none() {
-        match super::personas::persona_default_get(app) {
-            Ok(Some(default_persona_json)) => {
-                let default_persona: serde_json::Value =
-                    serde_json::from_str(&default_persona_json).unwrap_or(serde_json::json!({}));
-                default_persona
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            }
-            _ => None,
-        }
+        super::personas::default_persona_id(app.clone())
     } else {
         persona_id
     };
