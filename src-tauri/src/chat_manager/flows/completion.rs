@@ -3,13 +3,12 @@ use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
 use crate::api::{api_request, ApiRequest};
+use crate::chat_manager::attachments::{
+    cleanup_attachments, load_attachment_data, persist_attachments,
+};
 use crate::chat_manager::commands::{
-    append_image_directive_instructions, build_enriched_query, build_model_attempts,
-    build_provider_extra_fields, cleanup_attachments, conversation_window_with_pinned,
-    emit_fallback_retry_toast, insert_in_chat_prompt_entries, is_dynamic_memory_active,
-    load_attachment_data, manual_window_size, maybe_swap_message_for_api, partition_prompt_entries,
-    persist_attachments, process_dynamic_memory_cycle, role_swap_enabled, select_relevant_memories,
-    swapped_prompt_entities, take_aborted_request, RequestSettings,
+    build_model_attempts, build_provider_extra_fields, emit_fallback_retry_toast,
+    process_dynamic_memory_cycle, select_relevant_memories, take_aborted_request, RequestSettings,
 };
 use crate::chat_manager::dynamic_memory::{
     context_enrichment_enabled, dynamic_min_similarity, dynamic_retrieval_limit,
@@ -28,6 +27,12 @@ use crate::chat_manager::service::{
     record_failed_usage, record_usage_if_available, resolve_api_key, ChatService, PreparedChatTurn,
 };
 use crate::chat_manager::storage::recent_messages;
+use crate::chat_manager::turn_builder::{
+    append_image_directive_instructions, build_enriched_query, conversation_window_with_pinned,
+    insert_in_chat_prompt_entries, is_dynamic_memory_active, manual_window_size,
+    maybe_swap_message_for_api, partition_prompt_entries, role_swap_enabled,
+    swapped_prompt_entities,
+};
 use crate::chat_manager::types::{
     ChatCompletionArgs, ChatTurnResult, ImageAttachment, StoredMessage,
 };

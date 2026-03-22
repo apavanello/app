@@ -1,6 +1,5 @@
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
-use std::fs;
 use tauri::{AppHandle, Emitter, Manager};
 use uuid::Uuid;
 
@@ -12,10 +11,10 @@ use crate::dynamic_memory_run_manager::{DynamicMemoryCancellationToken, DynamicM
 use crate::embedding_model;
 use crate::image_generator::types::ImageGenerationRequest;
 use crate::storage_manager::db::open_db;
-use crate::storage_manager::legacy::storage_root;
 use crate::storage_manager::media::{storage_load_avatar, storage_read_image_data};
 use crate::utils::{emit_toast, log_error, log_info, log_warn, now_millis};
 
+use super::attachments::{cleanup_attachments, load_attachment_data, persist_attachments};
 use super::dynamic_memory::{
     apply_memory_decay, calculate_hot_memory_tokens, context_enrichment_enabled, cosine_similarity,
     dynamic_cold_threshold, dynamic_decay_rate, dynamic_hot_memory_token_budget,
@@ -41,12 +40,18 @@ use super::storage::{
     default_character_rules, recent_messages, resolve_provider_credential_for_model, save_session,
 };
 use super::tooling::{parse_tool_calls, ToolCall, ToolChoice, ToolConfig, ToolDefinition};
+use super::turn_builder::{
+    append_image_directive_instructions, build_enriched_query, conversation_window_with_pinned,
+    insert_in_chat_prompt_entries, is_dynamic_memory_active, manual_window_size,
+    maybe_swap_message_for_api, partition_prompt_entries, role_swap_enabled,
+    should_insert_in_chat_prompt_entry, swap_role_for_api, swapped_prompt_entities,
+};
 use super::types::{
     Character, ChatAddMessageAttachmentArgs, ChatCompletionArgs, ChatContinueArgs,
     ChatGenerateSceneImageArgs, ChatGenerateScenePromptArgs, ChatRegenerateArgs, ChatTurnResult,
-    ContinueResult, MemoryEmbedding, MemoryRetrievalStrategy, Model, Persona, PromptEntryPosition,
-    PromptScope, ProviderCredential, RegenerateResult, Session, Settings, StoredMessage,
-    SystemPromptEntry, SystemPromptTemplate,
+    ContinueResult, ImageAttachment, MemoryEmbedding, MemoryRetrievalStrategy, Model, Persona,
+    PromptEntryPosition, PromptScope, ProviderCredential, RegenerateResult, Session, Settings,
+    StoredMessage, SystemPromptEntry, SystemPromptTemplate,
 };
 use crate::storage_manager::sessions::{
     messages_upsert_batch_typed, session_conversation_count, session_upsert_meta_typed,
@@ -161,28 +166,6 @@ fn resolve_persona_id<'a>(session: &'a Session, explicit: Option<&'a str>) -> Op
     }
 }
 
-/// Determines if dynamic memory is currently active for this character.
-/// Returns true ONLY if BOTH conditions are met:
-/// 1. Global dynamic memory setting is enabled in advanced settings
-/// 2. Character's memory_type is set to "dynamic"
-///
-/// If either condition is false, the system falls back to manual memory mode
-/// (using session.memories) without modifying the character's memory_type setting.
-pub(crate) fn is_dynamic_memory_active(
-    settings: &Settings,
-    session_character: &super::types::Character,
-) -> bool {
-    settings
-        .advanced_settings
-        .as_ref()
-        .and_then(|a| a.dynamic_memory.as_ref())
-        .map(|dm| dm.enabled)
-        .unwrap_or(false)
-        && session_character
-            .memory_type
-            .eq_ignore_ascii_case("dynamic")
-}
-
 #[allow(dead_code)]
 fn has_image_generation_model(settings: &Settings) -> bool {
     settings.models.iter().any(|m| {
@@ -190,95 +173,6 @@ fn has_image_generation_model(settings: &Settings) -> bool {
             .iter()
             .any(|s| s.eq_ignore_ascii_case("image"))
     })
-}
-
-pub(crate) fn append_image_directive_instructions(
-    system_prompt_entries: Vec<SystemPromptEntry>,
-    _settings: &Settings,
-) -> Vec<SystemPromptEntry> {
-    system_prompt_entries
-}
-
-fn prompt_entry_to_message(system_role: &str, entry: &SystemPromptEntry) -> Value {
-    let role = match entry.role {
-        super::types::PromptEntryRole::System => system_role,
-        super::types::PromptEntryRole::User => "user",
-        super::types::PromptEntryRole::Assistant => "assistant",
-    };
-    json!({ "role": role, "content": entry.content })
-}
-
-pub(crate) fn partition_prompt_entries(
-    entries: Vec<SystemPromptEntry>,
-) -> (Vec<SystemPromptEntry>, Vec<SystemPromptEntry>) {
-    let mut relative = Vec::new();
-    let mut in_chat = Vec::new();
-    for entry in entries {
-        match entry.injection_position {
-            PromptEntryPosition::Relative => relative.push(entry),
-            PromptEntryPosition::InChat
-            | PromptEntryPosition::Conditional
-            | PromptEntryPosition::Interval => in_chat.push(entry),
-        }
-    }
-    (relative, in_chat)
-}
-
-fn should_insert_in_chat_prompt_entry(entry: &SystemPromptEntry, turn_count: usize) -> bool {
-    match entry.injection_position {
-        PromptEntryPosition::InChat => true,
-        PromptEntryPosition::Conditional => {
-            let min_messages = entry.conditional_min_messages.unwrap_or(1) as usize;
-            turn_count >= min_messages
-        }
-        PromptEntryPosition::Interval => {
-            let interval = entry.interval_turns.unwrap_or(0) as usize;
-            interval > 0 && turn_count > 0 && turn_count % interval == 0
-        }
-        PromptEntryPosition::Relative => false,
-    }
-}
-
-pub(crate) fn insert_in_chat_prompt_entries(
-    messages: &mut Vec<Value>,
-    system_role: &str,
-    entries: &[SystemPromptEntry],
-) {
-    if entries.is_empty() {
-        return;
-    }
-    let base_len = messages.len();
-    let turn_count = base_len;
-    let mut inserts: Vec<(usize, usize, &SystemPromptEntry)> = entries
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, entry)| {
-            if !should_insert_in_chat_prompt_entry(entry, turn_count) {
-                return None;
-            }
-            let depth = entry.injection_depth as usize;
-            let pos = base_len.saturating_sub(depth);
-            Some((pos, idx, entry))
-        })
-        .collect();
-    inserts.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
-    let mut offset = 0usize;
-    for (pos, _, entry) in inserts {
-        if entry.content.trim().is_empty() {
-            continue;
-        }
-        let insert_at = pos.saturating_add(offset).min(messages.len());
-        messages.insert(insert_at, prompt_entry_to_message(system_role, entry));
-        offset += 1;
-    }
-}
-
-pub(crate) fn manual_window_size(settings: &Settings) -> usize {
-    settings
-        .advanced_settings
-        .as_ref()
-        .and_then(|a| a.manual_mode_context_window)
-        .unwrap_or(50) as usize
 }
 
 /// Calculate total tokens used by hot (non-cold) memories
@@ -292,38 +186,6 @@ fn conversation_window(messages: &[StoredMessage], limit: usize) -> Vec<StoredMe
         convo.drain(0..(convo.len() - limit));
     }
     convo
-}
-
-/// Extract pinned and unpinned conversation messages separately.
-/// Pinned messages are always included but don't count against the window limit.
-/// Returns (pinned_messages, recent_unpinned_messages_within_limit)
-pub(crate) fn conversation_window_with_pinned(
-    messages: &[StoredMessage],
-    limit: usize,
-) -> (Vec<StoredMessage>, Vec<StoredMessage>) {
-    let convo: Vec<StoredMessage> = messages
-        .iter()
-        .filter(|m| m.role == "user" || m.role == "assistant")
-        .cloned()
-        .collect();
-
-    let mut pinned = Vec::new();
-    let mut unpinned = Vec::new();
-
-    for msg in convo {
-        if msg.is_pinned {
-            pinned.push(msg);
-        } else {
-            unpinned.push(msg);
-        }
-    }
-
-    // Apply sliding window to unpinned messages only
-    if unpinned.len() > limit {
-        unpinned.drain(0..(unpinned.len() - limit));
-    }
-
-    (pinned, unpinned)
 }
 
 fn conversation_count(messages: &[StoredMessage]) -> usize {
@@ -482,29 +344,6 @@ fn fetch_conversation_messages_range(
         out.push(row.map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?);
     }
     Ok(out)
-}
-
-/// Build an enriched query from the last 2 messages for better memory retrieval.
-/// Cases:
-/// - [assistant, user] -> assistant.content + user.content (normal chat)
-/// - [assistant, assistant] -> prev.content + last.content (chat continue)
-/// - [user, user] -> prev.content + last.content (cancelled retry)
-/// Falls back to just the latest message if only 1 exists.
-pub(crate) fn build_enriched_query(messages: &[StoredMessage]) -> String {
-    let convo: Vec<&StoredMessage> = messages
-        .iter()
-        .filter(|m| m.role == "user" || m.role == "assistant")
-        .collect();
-
-    match convo.len() {
-        0 => String::new(),
-        1 => convo[0].content.clone(),
-        _ => {
-            let last = &convo[convo.len() - 1];
-            let second_last = &convo[convo.len() - 2];
-            format!("{}\n{}", second_last.content, last.content)
-        }
-    }
 }
 
 fn format_memories_with_ids(session: &Session) -> Vec<String> {
@@ -1581,127 +1420,6 @@ pub(crate) async fn select_relevant_memories(
     results
 }
 
-use super::types::ImageAttachment;
-use crate::storage_manager::media::storage_save_session_attachment;
-
-pub(crate) fn persist_attachments(
-    app: &AppHandle,
-    character_id: &str,
-    session_id: &str,
-    message_id: &str,
-    role: &str,
-    attachments: Vec<ImageAttachment>,
-) -> Result<Vec<ImageAttachment>, String> {
-    let mut persisted = Vec::new();
-
-    for attachment in attachments {
-        if attachment.storage_path.is_some() && attachment.data.is_empty() {
-            persisted.push(attachment);
-            continue;
-        }
-
-        if attachment.data.is_empty() {
-            continue;
-        }
-
-        let storage_path = storage_save_session_attachment(
-            app.clone(),
-            character_id.to_string(),
-            session_id.to_string(),
-            message_id.to_string(),
-            attachment.id.clone(),
-            role.to_string(),
-            attachment.data.clone(),
-        )?;
-
-        persisted.push(ImageAttachment {
-            id: attachment.id,
-            data: String::new(),
-            mime_type: attachment.mime_type,
-            filename: attachment.filename,
-            width: attachment.width,
-            height: attachment.height,
-            storage_path: Some(storage_path),
-        });
-    }
-
-    Ok(persisted)
-}
-
-use crate::storage_manager::media::storage_load_session_attachment;
-
-pub(crate) fn load_attachment_data(app: &AppHandle, message: &StoredMessage) -> StoredMessage {
-    let mut loaded_message = message.clone();
-
-    loaded_message.attachments = message
-        .attachments
-        .iter()
-        .map(|attachment| {
-            if !attachment.data.is_empty() {
-                return attachment.clone();
-            }
-
-            let storage_path = match &attachment.storage_path {
-                Some(path) => path,
-                None => return attachment.clone(),
-            };
-
-            match storage_load_session_attachment(app.clone(), storage_path.clone()) {
-                Ok(data) => ImageAttachment {
-                    id: attachment.id.clone(),
-                    data,
-                    mime_type: attachment.mime_type.clone(),
-                    filename: attachment.filename.clone(),
-                    width: attachment.width,
-                    height: attachment.height,
-                    storage_path: attachment.storage_path.clone(),
-                },
-                Err(_) => attachment.clone(),
-            }
-        })
-        .collect();
-
-    loaded_message
-}
-
-pub(crate) fn cleanup_attachments(app: &AppHandle, attachments: &[ImageAttachment], scope: &str) {
-    for attachment in attachments {
-        let Some(storage_path) = &attachment.storage_path else {
-            continue;
-        };
-
-        let full_path = match storage_root(app) {
-            Ok(root) => root.join(storage_path),
-            Err(err) => {
-                log_error(
-                    app,
-                    scope,
-                    format!(
-                        "failed to resolve storage root while cleaning attachment {}: {}",
-                        storage_path, err
-                    ),
-                );
-                return;
-            }
-        };
-
-        if !full_path.exists() {
-            continue;
-        }
-
-        if let Err(err) = fs::remove_file(&full_path) {
-            log_error(
-                app,
-                scope,
-                format!("failed to remove attachment {}: {}", storage_path, err),
-            );
-            continue;
-        }
-
-        log_info(app, scope, format!("removed attachment {}", storage_path));
-    }
-}
-
 pub(crate) fn take_aborted_request(app: &AppHandle, request_id: Option<&str>) -> bool {
     let Some(request_id) = request_id else {
         return false;
@@ -1709,53 +1427,6 @@ pub(crate) fn take_aborted_request(app: &AppHandle, request_id: Option<&str>) ->
 
     let registry = app.state::<crate::abort_manager::AbortRegistry>();
     registry.take_aborted(request_id)
-}
-pub(crate) fn role_swap_enabled(flag: Option<bool>) -> bool {
-    flag.unwrap_or(false)
-}
-
-fn swap_role_for_api(role: &str) -> &str {
-    match role {
-        "user" => "assistant",
-        "assistant" => "user",
-        _ => role,
-    }
-}
-
-pub(crate) fn maybe_swap_message_for_api(
-    message: &StoredMessage,
-    swap_places: bool,
-) -> StoredMessage {
-    if !swap_places {
-        return message.clone();
-    }
-    let mut swapped = message.clone();
-    swapped.role = swap_role_for_api(message.role.as_str()).to_string();
-    swapped
-}
-
-pub(crate) fn swapped_prompt_entities(
-    character: &Character,
-    persona: Option<&Persona>,
-) -> (Character, Option<Persona>) {
-    let Some(persona) = persona else {
-        return (character.clone(), None);
-    };
-
-    let mut swapped_character = character.clone();
-    swapped_character.name = persona.title.clone();
-    swapped_character.definition = Some(persona.description.clone());
-    swapped_character.description = Some(persona.description.clone());
-
-    let mut swapped_persona = persona.clone();
-    swapped_persona.title = character.name.clone();
-    swapped_persona.description = character
-        .definition
-        .clone()
-        .or(character.description.clone())
-        .unwrap_or_default();
-
-    (swapped_character, Some(swapped_persona))
 }
 
 fn help_me_reply_participant_names<'a>(
@@ -6551,25 +6222,25 @@ pub async fn chat_add_message_attachment(
         .position(|m| m.id == message_id)
         .ok_or_else(|| "Message not found in loaded session window".to_string())?;
 
-    let storage_path = crate::storage_manager::media::storage_save_session_attachment(
-        app.clone(),
-        character_id,
-        session_id.clone(),
-        message_id.clone(),
-        attachment_id.clone(),
-        role,
-        base64_data,
-    )?;
-
-    let new_attachment = super::types::ImageAttachment {
-        id: attachment_id,
-        data: String::new(),
-        mime_type,
-        filename,
-        width,
-        height,
-        storage_path: Some(storage_path),
-    };
+    let new_attachment = persist_attachments(
+        &app,
+        &character_id,
+        &session_id,
+        &message_id,
+        &role,
+        vec![ImageAttachment {
+            id: attachment_id,
+            data: base64_data,
+            mime_type,
+            filename,
+            width,
+            height,
+            storage_path: None,
+        }],
+    )?
+    .into_iter()
+    .next()
+    .ok_or_else(|| "Failed to persist attachment".to_string())?;
 
     let updated_message = {
         let target = &mut session.messages[target_index];
