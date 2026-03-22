@@ -19,7 +19,7 @@ pub struct BuiltRequest {
 /// This function accepts messages normalized into OpenAI-style
 /// role/content objects and adapts them for each provider.
 pub fn build_chat_request(
-    provider_cred: &ProviderCredential,
+    credential: &ProviderCredential,
     api_key: &str,
     model_name: &str,
     messages_for_api: &Vec<Value>,
@@ -39,12 +39,12 @@ pub fn build_chat_request(
     reasoning_budget: Option<u32>,
     extra_body_fields: Option<HashMap<String, Value>>,
 ) -> BuiltRequest {
-    let base_url = provider_base_url(provider_cred);
+    let base_url = provider_base_url(credential);
 
-    let adapter = adapter_for(provider_cred);
+    let adapter = adapter_for(credential);
     let effective_stream = should_stream && adapter.supports_stream();
     let url = adapter.build_url(&base_url, model_name, api_key, effective_stream);
-    let headers = adapter.headers(api_key, provider_cred.headers.as_ref());
+    let headers = adapter.headers(api_key, credential.headers.as_ref());
 
     let body = adapter.body(
         model_name,
@@ -80,7 +80,7 @@ pub fn build_chat_request(
 }
 
 /// Returns the preferred system role keyword for the given provider.
-pub fn system_role_for(provider_cred: &ProviderCredential) -> std::borrow::Cow<'static, str> {
-    let adapter = adapter_for(provider_cred);
+pub fn system_role_for(credential: &ProviderCredential) -> std::borrow::Cow<'static, str> {
+    let adapter = adapter_for(credential);
     adapter.system_role()
 }

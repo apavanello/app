@@ -19,7 +19,7 @@ use rusqlite::OptionalExtension;
 
 use crate::abort_manager::AbortRegistry;
 use crate::api::{api_request, ApiRequest, ApiResponse};
-use crate::chat_manager::service::{apply_openrouter_cost_to_usage, resolve_api_key};
+use crate::chat_manager::service::{apply_openrouter_cost_to_usage, require_api_key};
 use crate::dynamic_memory_run_manager::{DynamicMemoryCancellationToken, DynamicMemoryRunManager};
 use crate::usage::add_usage_record;
 use crate::usage::tracking::{RequestUsage, UsageFinishReason, UsageOperationType};
@@ -42,7 +42,7 @@ use crate::chat_manager::request::{
     extract_error_message, extract_reasoning, extract_text, extract_usage,
 };
 use crate::chat_manager::storage::{
-    load_personas, load_settings, resolve_provider_credential_for_model, select_model,
+    load_personas, load_settings, resolve_credential_for_model, select_model_with_credential,
 };
 use crate::chat_manager::tooling::{
     parse_tool_calls, ToolCall, ToolChoice, ToolConfig, ToolDefinition,
@@ -1790,7 +1790,7 @@ async fn process_group_dynamic_memory_cycle(
     };
 
     let (summary_model, summary_provider) =
-        match find_model_and_credential(settings, &summarisation_model_id) {
+        match find_model_with_credential(settings, &summarisation_model_id) {
             Some(found) => found,
             None => {
                 record_group_dynamic_memory_error(
@@ -1812,7 +1812,7 @@ async fn process_group_dynamic_memory_cycle(
             }
         };
 
-    let api_key = match resolve_api_key(app, summary_provider, "group_dynamic_memory") {
+    let api_key = match require_api_key(app, summary_provider, "group_dynamic_memory") {
         Ok(key) => key,
         Err(err) => {
             record_group_dynamic_memory_error(
@@ -3209,13 +3209,13 @@ fn summarization_tool_config() -> ToolConfig {
     }
 }
 
-fn find_model_and_credential<'a>(
+fn find_model_with_credential<'a>(
     settings: &'a Settings,
     model_id: &str,
 ) -> Option<(&'a Model, &'a ProviderCredential)> {
     let model = settings.models.iter().find(|m| m.id == model_id)?;
-    let provider_cred = resolve_provider_credential_for_model(settings, model)?;
-    Some((model, provider_cred))
+    let credential = resolve_credential_for_model(settings, model)?;
+    Some((model, credential))
 }
 
 fn save_group_session_memories(
@@ -4221,10 +4221,10 @@ async fn select_speaker_via_llm_with_tracking(
         .first()
         .ok_or("No models configured for speaker selection")?;
 
-    let cred = resolve_provider_credential_for_model(settings, model)
+    let credential = resolve_credential_for_model(settings, model)
         .ok_or_else(|| format!("No credentials for provider {}", model.provider_id))?;
 
-    let api_key = resolve_api_key(app, cred, "group_chat_selection")?;
+    let api_key = require_api_key(app, credential, "group_chat_selection")?;
 
     // Build selection prompt
     let selection_prompt = selection::build_selection_prompt(context);
@@ -4270,9 +4270,9 @@ async fn select_speaker_via_llm_with_tracking(
     };
 
     let context_length = resolve_context_length(model, &settings);
-    let extra_body_fields = if cred.provider_id == "llamacpp" {
+    let extra_body_fields = if credential.provider_id == "llamacpp" {
         build_llama_extra_fields(model, &settings)
-    } else if cred.provider_id == "ollama" {
+    } else if credential.provider_id == "ollama" {
         build_ollama_extra_fields(
             model,
             &settings,
@@ -4288,7 +4288,7 @@ async fn select_speaker_via_llm_with_tracking(
         None
     };
     let built = crate::chat_manager::request_builder::build_chat_request(
-        cred,
+        credential,
         &api_key,
         &model.name,
         &messages,
@@ -4318,7 +4318,7 @@ async fn select_speaker_via_llm_with_tracking(
         timeout_ms: Some(30_000),
         stream: Some(false),
         request_id: None,
-        provider_id: Some(cred.provider_id.clone()),
+        provider_id: Some(credential.provider_id.clone()),
     };
 
     let api_response = api_request(app.clone(), api_request_payload).await?;
@@ -4338,7 +4338,7 @@ async fn select_speaker_via_llm_with_tracking(
             &usage,
             &context.session,
             model,
-            cred,
+            credential,
             &api_key,
             "group_chat_decision_maker",
         )
@@ -4346,7 +4346,7 @@ async fn select_speaker_via_llm_with_tracking(
     }
 
     // Parse tool call response
-    let calls = parse_tool_calls(&cred.provider_id, api_response.data());
+    let calls = parse_tool_calls(&credential.provider_id, api_response.data());
 
     for call in calls {
         if call.name == "select_next_speaker" {
@@ -4372,7 +4372,7 @@ async fn select_speaker_via_llm_with_tracking(
     }
 
     // Fallback: try parsing from text response
-    if let Some(text) = extract_text(api_response.data(), Some(&cred.provider_id)) {
+    if let Some(text) = extract_text(api_response.data(), Some(&credential.provider_id)) {
         if let Some(result) = selection::parse_tool_call_response(&text) {
             return Ok(result);
         }
@@ -4419,8 +4419,8 @@ async fn generate_character_response(
     };
 
     // Get model and credentials
-    let (model, cred) = select_model(settings, &character)?;
-    let api_key = resolve_api_key(app, cred, "group_chat")?;
+    let (model, credential) = select_model_with_credential(settings, &character)?;
+    let api_key = require_api_key(app, credential, "group_chat")?;
 
     let dynamic_settings = effective_group_dynamic_memory_settings(settings);
 
@@ -4541,7 +4541,7 @@ async fn generate_character_response(
         persona.as_ref(),
         true,
     );
-    let system_role = crate::chat_manager::request_builder::system_role_for(cred);
+    let system_role = crate::chat_manager::request_builder::system_role_for(credential);
     insert_in_chat_prompt_entries(&mut api_messages, &system_role, &in_chat_entries);
 
     let mut messages_for_api = Vec::new();
@@ -4556,7 +4556,7 @@ async fn generate_character_response(
         "content": format!("[{}]: {}", persona_name, context.user_message)
     }));
 
-    let sampler_profile = if cred.provider_id == "llamacpp" {
+    let sampler_profile = if credential.provider_id == "llamacpp" {
         Some(resolve_llama_sampler_profile(model, &settings))
     } else {
         None
@@ -4608,9 +4608,9 @@ async fn generate_character_response(
         .as_ref()
         .and_then(|a| a.top_k)
         .or_else(|| sampler_defaults.and_then(|defaults| defaults.top_k));
-    let extra_body_fields = if cred.provider_id == "llamacpp" {
+    let extra_body_fields = if credential.provider_id == "llamacpp" {
         build_llama_extra_fields(model, &settings)
-    } else if cred.provider_id == "ollama" {
+    } else if credential.provider_id == "ollama" {
         build_ollama_extra_fields(
             model,
             &settings,
@@ -4627,7 +4627,7 @@ async fn generate_character_response(
     };
 
     let built = crate::chat_manager::request_builder::build_chat_request(
-        cred,
+        credential,
         &api_key,
         &model.name,
         &messages_for_api,
@@ -4653,7 +4653,7 @@ async fn generate_character_response(
         "group_chat",
         format!(
             "Generating response from {} via {} model {}",
-            character.name, cred.provider_id, model.name
+            character.name, credential.provider_id, model.name
         ),
     );
 
@@ -4686,7 +4686,7 @@ async fn generate_character_response(
         timeout_ms: Some(300_000),
         stream: Some(true),
         request_id: Some(request_id.to_string()),
-        provider_id: Some(cred.provider_id.clone()),
+        provider_id: Some(credential.provider_id.clone()),
     };
 
     log_info(
@@ -4818,7 +4818,7 @@ async fn generate_character_response(
         &context.session,
         &character,
         model,
-        cred,
+        credential,
         &api_key,
         operation_type,
         "group_chat_response",
@@ -5703,10 +5703,10 @@ pub async fn group_chat_generate_user_reply(
         .find(|m| &m.id == model_id)
         .ok_or_else(|| "Group Help Me Reply model not found".to_string())?;
 
-    let provider_cred = resolve_provider_credential_for_model(&settings, model)
+    let provider_cred = resolve_credential_for_model(&settings, model)
         .ok_or_else(|| "Provider credential not found".to_string())?;
 
-    let api_key = resolve_api_key(&app, provider_cred, "group_help_me_reply")?;
+    let api_key = require_api_key(&app, provider_cred, "group_help_me_reply")?;
 
     // Get reply style from settings (default to roleplay)
     let reply_style = settings

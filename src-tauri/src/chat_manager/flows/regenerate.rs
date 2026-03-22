@@ -25,7 +25,7 @@ use crate::chat_manager::request::{
     extract_usage, new_assistant_variant, push_assistant_variant,
 };
 use crate::chat_manager::service::{
-    record_failed_usage, record_usage_if_available, resolve_api_key, ChatService, PreparedChatTurn,
+    record_failed_usage, record_usage_if_available, require_api_key, ChatService, PreparedChatTurn,
 };
 use crate::chat_manager::turn_builder::{
     append_image_directive_instructions, build_enriched_query, conversation_window_with_pinned,
@@ -75,7 +75,7 @@ impl RegenerateFlow {
             mut session,
             persona,
             model,
-            provider_cred,
+            credential,
         } = prepared;
         let settings = &context.settings;
 
@@ -146,9 +146,9 @@ impl RegenerateFlow {
             "chat_regenerate",
             format!(
                 "selected provider={} model={} credential={}",
-                provider_cred.provider_id.as_str(),
+                credential.provider_id.as_str(),
                 model.name.as_str(),
-                provider_cred.id.as_str()
+                credential.id.as_str()
             ),
         );
 
@@ -156,9 +156,9 @@ impl RegenerateFlow {
             &app,
             "regenerate_model_selected",
             json!({
-                "providerId": provider_cred.provider_id,
+                "providerId": credential.provider_id,
                 "model": model.name,
-                "credentialId": provider_cred.id,
+                "credentialId": credential.id,
             }),
         );
 
@@ -252,7 +252,7 @@ impl RegenerateFlow {
             );
         let (relative_entries, in_chat_entries) = partition_prompt_entries(prompt_entries);
 
-        let system_role = crate::chat_manager::request_builder::system_role_for(&provider_cred);
+        let system_role = crate::chat_manager::request_builder::system_role_for(&credential);
         let messages_for_api = {
             let mut out = Vec::new();
             for entry in &relative_entries {
@@ -366,12 +366,12 @@ impl RegenerateFlow {
             settings,
             &character,
             &model,
-            &provider_cred,
+            &credential,
             "chat_regenerate",
         );
 
         let mut selected_model = &model;
-        let mut selected_provider_cred = &provider_cred;
+        let mut selected_credential = &credential;
         let mut selected_api_key = String::new();
         let mut fallback_from_model_id: Option<String> = None;
         let mut successful_response = None;
@@ -386,28 +386,28 @@ impl RegenerateFlow {
             ensure_assistant_variant(message);
         }
 
-        for (idx, (attempt_model, attempt_provider_cred, is_fallback_attempt)) in
+        for (idx, (attempt_model, attempt_credential, is_fallback_attempt)) in
             attempts.iter().enumerate()
         {
             let has_next_attempt = idx + 1 < attempts.len();
 
-            let attempt_api_key =
-                match resolve_api_key(&app, attempt_provider_cred, "chat_regenerate") {
-                    Ok(key) => key,
-                    Err(err) => {
-                        last_error = err;
-                        if has_next_attempt {
-                            emit_fallback_retry_toast(&app, &mut fallback_toast_shown);
-                            continue;
-                        }
-                        return Err(last_error);
+            let attempt_api_key = match require_api_key(&app, attempt_credential, "chat_regenerate")
+            {
+                Ok(key) => key,
+                Err(err) => {
+                    last_error = err;
+                    if has_next_attempt {
+                        emit_fallback_retry_toast(&app, &mut fallback_toast_shown);
+                        continue;
                     }
-                };
+                    return Err(last_error);
+                }
+            };
 
             let request_settings =
                 RequestSettings::resolve(&session, attempt_model, &context.settings);
             let extra_body_fields = build_provider_extra_fields(
-                &attempt_provider_cred.provider_id,
+                &attempt_credential.provider_id,
                 &session,
                 attempt_model,
                 &context.settings,
@@ -415,7 +415,7 @@ impl RegenerateFlow {
             );
 
             let built = crate::chat_manager::request_builder::build_chat_request(
-                attempt_provider_cred,
+                attempt_credential,
                 &attempt_api_key,
                 &attempt_model.name,
                 &messages_for_api,
@@ -458,7 +458,7 @@ impl RegenerateFlow {
                 timeout_ms: Some(900_000),
                 stream: Some(built.stream),
                 request_id: built.request_id.clone(),
-                provider_id: Some(attempt_provider_cred.provider_id.clone()),
+                provider_id: Some(attempt_credential.provider_id.clone()),
             };
 
             let api_response = match api_request(app.clone(), api_request_payload).await {
@@ -505,7 +505,7 @@ impl RegenerateFlow {
                         &session,
                         &character,
                         attempt_model,
-                        attempt_provider_cred,
+                        attempt_credential,
                         UsageOperationType::Regenerate,
                         &err_message,
                         "chat_regenerate",
@@ -524,7 +524,7 @@ impl RegenerateFlow {
             }
 
             selected_model = attempt_model;
-            selected_provider_cred = attempt_provider_cred;
+            selected_credential = attempt_credential;
             selected_api_key = attempt_api_key;
             fallback_from_model_id = if *is_fallback_attempt {
                 Some(model.id.clone())
@@ -551,16 +551,11 @@ impl RegenerateFlow {
             _ => Vec::new(),
         };
 
-        let text = extract_text(
-            api_response.data(),
-            Some(&selected_provider_cred.provider_id),
-        )
-        .unwrap_or_default();
+        let text = extract_text(api_response.data(), Some(&selected_credential.provider_id))
+            .unwrap_or_default();
         let usage = extract_usage(api_response.data());
-        let reasoning = extract_reasoning(
-            api_response.data(),
-            Some(&selected_provider_cred.provider_id),
-        );
+        let reasoning =
+            extract_reasoning(api_response.data(), Some(&selected_credential.provider_id));
 
         if text.trim().is_empty() && images_from_sse.is_empty() {
             let preview =
@@ -707,7 +702,7 @@ impl RegenerateFlow {
             &session,
             &character,
             selected_model,
-            selected_provider_cred,
+            selected_credential,
             &selected_api_key,
             created_at,
             UsageOperationType::Regenerate,

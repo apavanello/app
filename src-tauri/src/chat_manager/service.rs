@@ -13,7 +13,7 @@ use crate::usage::{
 use crate::utils::{log_error, log_info, log_warn, now_millis};
 
 use super::repository::ChatRepository;
-use super::storage::{build_system_prompt, choose_persona, select_model};
+use super::storage::{build_system_prompt, choose_persona, select_model_with_credential};
 use super::types::{
     Character, Model, Persona, ProviderCredential, Session, Settings, SystemPromptEntry,
     UsageSummary,
@@ -65,11 +65,11 @@ impl ChatContext {
             .ok_or_else(|| "Character not found".to_string())
     }
 
-    pub fn select_model<'a>(
+    pub fn select_model_with_credential<'a>(
         &'a self,
         character: &Character,
     ) -> Result<(&'a Model, &'a ProviderCredential), String> {
-        select_model(&self.settings, character)
+        select_model_with_credential(&self.settings, character)
     }
 
     pub fn load_session(&self, session_id: &str) -> Result<Option<Session>, String> {
@@ -113,7 +113,7 @@ pub struct PreparedChatTurn {
     pub session: Session,
     pub persona: Option<Persona>,
     pub model: Model,
-    pub provider_cred: ProviderCredential,
+    pub credential: ProviderCredential,
 }
 
 impl ChatService {
@@ -160,9 +160,9 @@ impl ChatService {
 
         let effective_persona_id = resolve_persona_id(&session, persona_id);
         let persona = self.context.choose_persona(effective_persona_id).cloned();
-        let (model, provider_cred) = self.context.select_model(&character)?;
+        let (model, credential) = self.context.select_model_with_credential(&character)?;
         let model = model.clone();
-        let provider_cred = provider_cred.clone();
+        let credential = credential.clone();
 
         Ok(PreparedChatTurn {
             context: self.context,
@@ -170,7 +170,7 @@ impl ChatService {
             session,
             persona,
             model,
-            provider_cred,
+            credential,
         })
     }
 }
@@ -186,16 +186,16 @@ fn resolve_persona_id<'a>(session: &'a Session, explicit: Option<&'a str>) -> Op
     }
 }
 
-pub fn resolve_api_key(
+pub fn require_api_key(
     app: &AppHandle,
-    provider_cred: &ProviderCredential,
+    credential: &ProviderCredential,
     log_scope: &str,
 ) -> Result<String, String> {
-    if provider_cred.provider_id == "llamacpp" {
+    if credential.provider_id == "llamacpp" {
         return Ok(String::new());
     }
     // Prefer inline api_key on the credential
-    if let Some(ref key) = provider_cred.api_key {
+    if let Some(ref key) = credential.api_key {
         if !key.is_empty() {
             return Ok(key.clone());
         }
@@ -205,7 +205,7 @@ pub fn resolve_api_key(
         log_scope,
         format!(
             "provider credential {} missing API key",
-            provider_cred.id.as_str()
+            credential.id.as_str()
         ),
     );
     Err(crate::utils::err_msg(
@@ -403,7 +403,7 @@ pub async fn record_usage_if_available(
     session: &Session,
     character: &Character,
     model: &Model,
-    provider_cred: &ProviderCredential,
+    credential: &ProviderCredential,
     api_key: &str,
     created_at: u64,
     operation_type: UsageOperationType,
@@ -421,8 +421,8 @@ pub async fn record_usage_if_available(
         character_name: character.name.clone(),
         model_id: model.id.clone(),
         model_name: model.name.clone(),
-        provider_id: provider_cred.provider_id.clone(),
-        provider_label: provider_cred.provider_id.clone(),
+        provider_id: credential.provider_id.clone(),
+        provider_label: credential.provider_id.clone(),
         operation_type,
         finish_reason: usage_info
             .finish_reason
@@ -468,7 +468,7 @@ pub async fn record_usage_if_available(
         }
     }
 
-    if provider_cred.provider_id.eq_ignore_ascii_case("openrouter") {
+    if credential.provider_id.eq_ignore_ascii_case("openrouter") {
         apply_openrouter_cost_to_usage(
             context.app(),
             &mut request_usage,
@@ -495,7 +495,7 @@ pub fn record_failed_usage(
     session: &Session,
     character: &Character,
     model: &Model,
-    provider_cred: &ProviderCredential,
+    credential: &ProviderCredential,
     operation_type: UsageOperationType,
     error_message: &str,
     log_scope: &str,
@@ -512,8 +512,8 @@ pub fn record_failed_usage(
         character_name: character.name.clone(),
         model_id: model.id.clone(),
         model_name: model.name.clone(),
-        provider_id: provider_cred.provider_id.clone(),
-        provider_label: provider_cred.provider_id.clone(),
+        provider_id: credential.provider_id.clone(),
+        provider_label: credential.provider_id.clone(),
         operation_type,
         finish_reason: usage_info
             .finish_reason

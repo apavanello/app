@@ -20,14 +20,16 @@ use super::dynamic::{
     search_cold_memory_indices_by_keyword, select_relevant_memory_indices,
     select_top_cosine_memory_indices, trim_memories_to_max,
 };
-use crate::chat_manager::execution::{find_model_and_credential, prepare_default_sampling_request};
+use crate::chat_manager::execution::{
+    find_model_with_credential, prepare_default_sampling_request,
+};
 use crate::chat_manager::prompt_engine;
 use crate::chat_manager::prompts::{
     self, APP_DYNAMIC_MEMORY_TEMPLATE_ID, APP_DYNAMIC_SUMMARY_TEMPLATE_ID,
 };
 use crate::chat_manager::request::{extract_error_message, extract_text, extract_usage};
 use crate::chat_manager::request_builder;
-use crate::chat_manager::service::{record_usage_if_available, resolve_api_key, ChatContext};
+use crate::chat_manager::service::{record_usage_if_available, require_api_key, ChatContext};
 use crate::chat_manager::storage::save_session;
 use crate::chat_manager::tooling::{
     parse_tool_calls, ToolCall, ToolChoice, ToolConfig, ToolDefinition,
@@ -688,7 +690,7 @@ async fn process_dynamic_memory_cycle_with_model(
     };
 
     let (summary_model, summary_provider) =
-        match find_model_and_credential(settings, &summarisation_model_id) {
+        match find_model_with_credential(settings, &summarisation_model_id) {
             Some(found) => found,
             None => {
                 let err = "Summarisation model unavailable";
@@ -698,7 +700,7 @@ async fn process_dynamic_memory_cycle_with_model(
             }
         };
 
-    let api_key = match resolve_api_key(app, summary_provider, "dynamic_memory") {
+    let api_key = match require_api_key(app, summary_provider, "dynamic_memory") {
         Ok(key) => key,
         Err(err) => {
             record_dynamic_memory_error(app, session, &err, "summary_api_key");

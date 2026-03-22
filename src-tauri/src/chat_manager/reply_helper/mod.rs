@@ -5,8 +5,8 @@ use crate::api::{api_request, ApiRequest};
 use crate::chat_manager::execution::prepare_sampling_request;
 use crate::chat_manager::prompts;
 use crate::chat_manager::request::extract_text;
-use crate::chat_manager::service::{resolve_api_key, ChatContext};
-use crate::chat_manager::storage::{recent_messages, resolve_provider_credential_for_model};
+use crate::chat_manager::service::{require_api_key, ChatContext};
+use crate::chat_manager::storage::{recent_messages, resolve_credential_for_model};
 use crate::chat_manager::turn_builder::{
     role_swap_enabled, swap_role_for_api, swapped_prompt_entities,
 };
@@ -109,10 +109,10 @@ pub async fn chat_generate_user_reply(
         .find(|m| &m.id == model_id)
         .ok_or_else(|| "Help Me Reply model not found".to_string())?;
 
-    let provider_cred = resolve_provider_credential_for_model(settings, model)
+    let credential = resolve_credential_for_model(settings, model)
         .ok_or_else(|| "Provider credential not found".to_string())?;
 
-    let api_key = resolve_api_key(&app, provider_cred, "help_me_reply")?;
+    let api_key = require_api_key(&app, credential, "help_me_reply")?;
 
     // Get reply style from settings (default to roleplay)
     let reply_style = settings
@@ -216,7 +216,7 @@ pub async fn chat_generate_user_reply(
     ];
 
     let (request_settings, extra_body_fields) = prepare_sampling_request(
-        &provider_cred.provider_id,
+        &credential.provider_id,
         &session,
         model,
         settings,
@@ -228,7 +228,7 @@ pub async fn chat_generate_user_reply(
         None,
     );
     let built = super::request_builder::build_chat_request(
-        provider_cred,
+        credential,
         &api_key,
         &model.name,
         &messages_for_api,
@@ -264,7 +264,7 @@ pub async fn chat_generate_user_reply(
         timeout_ms: Some(60_000),
         stream: Some(streaming_enabled),
         request_id: request_id.clone(),
-        provider_id: Some(provider_cred.provider_id.clone()),
+        provider_id: Some(credential.provider_id.clone()),
     };
 
     let api_response = api_request(app.clone(), api_request_payload).await?;
@@ -276,7 +276,7 @@ pub async fn chat_generate_user_reply(
         ));
     }
 
-    let generated_text = extract_text(&api_response.data, Some(&provider_cred.provider_id))
+    let generated_text = extract_text(&api_response.data, Some(&credential.provider_id))
         .ok_or_else(|| "Failed to extract text from response".to_string())?;
 
     let cleaned = generated_text
@@ -299,7 +299,7 @@ pub async fn chat_generate_user_reply(
         &session,
         &prompt_character,
         &model,
-        &provider_cred,
+        &credential,
         &api_key,
         now_millis().unwrap_or(0),
         UsageOperationType::ReplyHelper,

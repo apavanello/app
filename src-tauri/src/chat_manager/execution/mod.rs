@@ -633,7 +633,7 @@ pub(crate) fn prepare_default_sampling_request(
 mod fallback;
 
 pub(crate) use fallback::{
-    build_model_attempts, emit_fallback_retry_toast, find_model_and_credential,
+    build_model_attempts, emit_fallback_retry_toast, find_model_with_credential,
 };
 
 mod provider_fields;

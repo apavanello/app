@@ -3,12 +3,12 @@ use tauri::AppHandle;
 
 use crate::api::{api_request, ApiRequest};
 use crate::chat_manager::attachments::{cleanup_attachments, persist_attachments};
-use crate::chat_manager::execution::{find_model_and_credential, prepare_sampling_request};
+use crate::chat_manager::execution::{find_model_with_credential, prepare_sampling_request};
 use crate::chat_manager::prompts;
 use crate::chat_manager::request::extract_text;
-use crate::chat_manager::service::{resolve_api_key, ChatContext};
+use crate::chat_manager::service::{require_api_key, ChatContext};
 use crate::chat_manager::storage::{
-    get_base_prompt_entries, resolve_provider_credential_for_model, PromptType,
+    get_base_prompt_entries, resolve_credential_for_model, PromptType,
 };
 use crate::chat_manager::turn_builder::{
     partition_prompt_entries, should_insert_in_chat_prompt_entry,
@@ -40,7 +40,7 @@ fn resolve_image_generation_target<'a>(
     preferred_model_id: Option<&str>,
 ) -> Result<(&'a Model, &'a ProviderCredential), String> {
     if let Some(model_id) = preferred_model_id.filter(|id| !id.trim().is_empty()) {
-        let (model, provider_cred) = find_model_and_credential(settings, model_id)
+        let (model, credential) = find_model_with_credential(settings, model_id)
             .ok_or_else(|| "Configured scene generation model could not be resolved".to_string())?;
         let supports_image_output = model
             .output_scopes
@@ -51,7 +51,7 @@ fn resolve_image_generation_target<'a>(
                 "Configured scene generation model does not support image output".to_string(),
             );
         }
-        return Ok((model, provider_cred));
+        return Ok((model, credential));
     }
 
     settings
@@ -65,8 +65,8 @@ fn resolve_image_generation_target<'a>(
             if !supports_image_output {
                 return None;
             }
-            let provider_cred = resolve_provider_credential_for_model(settings, model)?;
-            Some((model, provider_cred))
+            let credential = resolve_credential_for_model(settings, model)?;
+            Some((model, credential))
         })
         .ok_or_else(|| "No image generation model is configured".to_string())
 }
@@ -313,7 +313,7 @@ fn build_scene_prompt_content_with_images(
 fn build_scene_generation_request(
     scene_prompt: &str,
     model: &Model,
-    provider_cred: &ProviderCredential,
+    credential: &ProviderCredential,
     character: &Character,
     persona: Option<&Persona>,
     reference_images: SceneReferenceImages,
@@ -433,7 +433,7 @@ fn build_scene_generation_request(
         prompt: prompt_sections.join("\n\n"),
         model: model.name.clone(),
         provider_id: model.provider_id.clone(),
-        credential_id: provider_cred.id.clone(),
+        credential_id: credential.id.clone(),
         input_images: if input_images.is_empty() {
             None
         } else {
@@ -840,7 +840,7 @@ pub async fn chat_generate_scene_image(
     if !scene_generation_enabled(&settings) {
         return Err("Scene generation is disabled in settings".to_string());
     }
-    let (model, provider_cred) = resolve_image_generation_target(
+    let (model, credential) = resolve_image_generation_target(
         &settings,
         settings
             .advanced_settings
@@ -868,7 +868,7 @@ pub async fn chat_generate_scene_image(
     let request = build_scene_generation_request(
         &scene_prompt,
         model,
-        provider_cred,
+        credential,
         character,
         persona,
         reference_images,
@@ -964,8 +964,8 @@ pub async fn chat_generate_scene_prompt(
         .ok_or_else(|| "Session not found".to_string())?;
     let character = context.find_character(&session.character_id)?;
     let persona = context.choose_persona(resolve_persona_id(&session, None));
-    let (model, provider_cred) = context.select_model(&character)?;
-    let api_key = resolve_api_key(&app, provider_cred, "scene_prompt")?;
+    let (model, credential) = context.select_model_with_credential(&character)?;
+    let api_key = require_api_key(&app, credential, "scene_prompt")?;
 
     let recent_messages_text = build_scene_prompt_context_messages(&session, &message_id)?;
     let reference_images = build_scene_reference_images(&app, &character, persona);
@@ -992,7 +992,7 @@ pub async fn chat_generate_scene_prompt(
     );
 
     let (request_settings, extra_body_fields) = prepare_sampling_request(
-        &provider_cred.provider_id,
+        &credential.provider_id,
         &session,
         model,
         settings,
@@ -1005,7 +1005,7 @@ pub async fn chat_generate_scene_prompt(
     );
 
     let built = super::request_builder::build_chat_request(
-        provider_cred,
+        credential,
         &api_key,
         &model.name,
         &messages_for_api,
@@ -1035,7 +1035,7 @@ pub async fn chat_generate_scene_prompt(
         timeout_ms: Some(60_000),
         stream: Some(false),
         request_id: None,
-        provider_id: Some(provider_cred.provider_id.clone()),
+        provider_id: Some(credential.provider_id.clone()),
     };
 
     let api_response = api_request(app.clone(), api_request_payload).await?;
@@ -1046,7 +1046,7 @@ pub async fn chat_generate_scene_prompt(
         ));
     }
 
-    let generated_text = extract_text(&api_response.data, Some(&provider_cred.provider_id))
+    let generated_text = extract_text(&api_response.data, Some(&credential.provider_id))
         .ok_or_else(|| "Failed to extract text from response".to_string())?;
 
     let cleaned = condense_prompt_whitespace(
@@ -1070,7 +1070,7 @@ pub async fn chat_generate_scene_prompt(
         &session,
         &character,
         model,
-        provider_cred,
+        credential,
         &api_key,
         now_millis().unwrap_or(0),
         UsageOperationType::ReplyHelper,

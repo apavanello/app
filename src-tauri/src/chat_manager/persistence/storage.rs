@@ -222,7 +222,7 @@ pub fn save_session(app: &AppHandle, session: &Session) -> Result<(), String> {
     Ok(())
 }
 
-pub fn select_model<'a>(
+pub fn select_model_with_credential<'a>(
     settings: &'a Settings,
     character: &Character,
 ) -> Result<(&'a Model, &'a ProviderCredential), String> {
@@ -238,13 +238,13 @@ pub fn select_model<'a>(
         .find(|m| m.id == model_id)
         .ok_or_else(|| "Model not found".to_string())?;
 
-    let provider_cred = resolve_provider_credential_for_model(settings, model)
+    let credential = resolve_credential_for_model(settings, model)
         .ok_or_else(|| "Provider credential not found".to_string())?;
 
-    Ok((model, provider_cred))
+    Ok((model, credential))
 }
 
-pub fn resolve_provider_credential_for_model<'a>(
+pub fn resolve_credential_for_model<'a>(
     settings: &'a Settings,
     model: &Model,
 ) -> Option<&'a ProviderCredential> {
@@ -307,7 +307,7 @@ pub fn resolve_provider_credential_for_model<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_provider_credential_for_model;
+    use super::resolve_credential_for_model;
     use crate::chat_manager::types::{AdvancedModelSettings, Model, ProviderCredential, Settings};
     use serde_json::Value;
 
@@ -369,7 +369,7 @@ mod tests {
     fn resolves_single_candidate() {
         let model = mk_model("custom", "local", "glm-auto");
         let settings = mk_settings(None, vec![mk_cred("c1", "custom", "local", None)]);
-        let picked = resolve_provider_credential_for_model(&settings, &model).map(|c| c.id.clone());
+        let picked = resolve_credential_for_model(&settings, &model).map(|c| c.id.clone());
         assert_eq!(picked.as_deref(), Some("c1"));
     }
 
@@ -383,7 +383,7 @@ mod tests {
                 mk_cred("c2", "custom", "modal", None),
             ],
         );
-        let picked = resolve_provider_credential_for_model(&settings, &model).map(|c| c.id.clone());
+        let picked = resolve_credential_for_model(&settings, &model).map(|c| c.id.clone());
         assert_eq!(picked.as_deref(), Some("c2"));
     }
 
@@ -397,7 +397,7 @@ mod tests {
                 mk_cred("c2", "custom", "local", None),
             ],
         );
-        let picked = resolve_provider_credential_for_model(&settings, &model).map(|c| c.id.clone());
+        let picked = resolve_credential_for_model(&settings, &model).map(|c| c.id.clone());
         assert_eq!(picked.as_deref(), Some("c2"));
     }
 
@@ -411,7 +411,7 @@ mod tests {
                 mk_cred("c2", "custom", "local", Some("glm-auto")),
             ],
         );
-        let picked = resolve_provider_credential_for_model(&settings, &model).map(|c| c.id.clone());
+        let picked = resolve_credential_for_model(&settings, &model).map(|c| c.id.clone());
         assert_eq!(picked.as_deref(), Some("c2"));
     }
 
@@ -425,7 +425,7 @@ mod tests {
                 mk_cred("c2", "custom", "two", None),
             ],
         );
-        let picked = resolve_provider_credential_for_model(&settings, &model).map(|c| c.id.clone());
+        let picked = resolve_credential_for_model(&settings, &model).map(|c| c.id.clone());
         assert!(picked.is_none());
     }
 
@@ -440,7 +440,7 @@ mod tests {
                 mk_cred("c2", "custom", "modal", None),
             ],
         );
-        let picked = resolve_provider_credential_for_model(&settings, &model).map(|c| c.id.clone());
+        let picked = resolve_credential_for_model(&settings, &model).map(|c| c.id.clone());
         assert_eq!(picked.as_deref(), Some("c2"));
     }
 }
