@@ -122,7 +122,7 @@ export function MessageActionsBottomSheet({
   setMessageAction,
   onOpenSceneImageFlow,
   hasSceneImage = false,
-  sceneGenerationEnabled = true,
+  sceneGenerationEnabled = false,
   characterMemoryType,
   characterDefaultModelId,
   characterId,

@@ -40,7 +40,7 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
   const imageGenConfigRef = useRef<ImageGenConfig | null>(null);
   const hapticsEnabledRef = useRef<boolean>(false);
   const hapticIntensityRef = useRef<any>("light");
-  const sceneGenerationEnabledRef = useRef<boolean>(true);
+  const sceneGenerationEnabledRef = useRef<boolean>(false);
   const lastHapticTimeRef = useRef<number>(0);
   const platformRef = useRef<string>("");
 
@@ -223,6 +223,15 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
       options?: { scenePrompt?: string | null; requestId?: string | null },
     ) => {
       if (!state.session || !state.character) return;
+      let sceneGenerationEnabled = sceneGenerationEnabledRef.current;
+      try {
+        const settings = await readSettings();
+        sceneGenerationEnabled = settings.advancedSettings?.sceneGenerationEnabled ?? true;
+        sceneGenerationEnabledRef.current = sceneGenerationEnabled;
+      } catch {
+        // Fall back to the last known value.
+      }
+
       const currentSession = state.session;
       const currentCharacter = state.character;
       if (processedImageDirectiveMessagesRef.current.has(assistantMessageId)) return;
@@ -236,9 +245,7 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
       if (!currentMessage) return;
 
       const { cleanContent, directives } = parseImageDirectives(currentMessage.content);
-      const scenePrompt = sceneGenerationEnabledRef.current
-        ? (options?.scenePrompt?.trim() ?? "")
-        : "";
+      const scenePrompt = sceneGenerationEnabled ? (options?.scenePrompt?.trim() ?? "") : "";
       if (directives.length === 0 && !scenePrompt) return;
 
       const config = directives.length > 0 ? await resolveDefaultImageGenConfig() : null;

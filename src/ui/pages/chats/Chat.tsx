@@ -161,7 +161,7 @@ export function ChatConversationPage() {
   const [scenePromptError, setScenePromptError] = useState<string | null>(null);
   const [applyingSceneImage, setApplyingSceneImage] = useState(false);
   const [helpMeReplyEnabled, setHelpMeReplyEnabled] = useState(true);
-  const [sceneGenerationEnabled, setSceneGenerationEnabled] = useState(true);
+  const [sceneGenerationEnabled, setSceneGenerationEnabled] = useState(false);
   const [shouldTriggerFileInput, setShouldTriggerFileInput] = useState(false);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const isMobile = useMemo(() => getPlatform().type === "mobile", []);
