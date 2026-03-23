@@ -53,6 +53,10 @@ pub fn default_scene_generation_prompt() -> String {
     join_entries(&default_scene_generation_entries())
 }
 
+pub fn default_design_reference_prompt() -> String {
+    join_entries(&default_design_reference_entries())
+}
+
 fn join_entries(entries: &[SystemPromptEntry]) -> String {
     entries
         .iter()
@@ -866,6 +870,83 @@ pub fn default_scene_generation_entries() -> Vec<SystemPromptEntry> {
             name: "Output".to_string(),
             role: PromptEntryRole::System,
             content: "Output only the final image prompt text.".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: false,
+        },
+    ]
+}
+
+pub fn default_design_reference_entries() -> Vec<SystemPromptEntry> {
+    vec![
+        SystemPromptEntry {
+            id: "design_ref_task".to_string(),
+            name: "Task".to_string(),
+            role: PromptEntryRole::System,
+            content: "You are a character design documentarian.\nAnalyze these reference images and write a design preference text for this character. The text will be used to brief concept artists and image generators.".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: true,
+        },
+        SystemPromptEntry {
+            id: "design_ref_subject".to_string(),
+            name: "Subject Context".to_string(),
+            role: PromptEntryRole::User,
+            content: "# Subject\n{{subject_name}}\n\n# Subject Context\n{{subject_description}}\n\n# Current Notes To Refine\n{{current_description}}".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::InChat,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: false,
+        },
+        SystemPromptEntry {
+            id: "design_ref_avatar_image".to_string(),
+            name: "Avatar Image".to_string(),
+            role: PromptEntryRole::User,
+            content: "{{image[avatar]}}".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::InChat,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: false,
+        },
+        SystemPromptEntry {
+            id: "design_ref_reference_images".to_string(),
+            name: "Reference Images".to_string(),
+            role: PromptEntryRole::User,
+            content: "{{image[references]}}".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::InChat,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: false,
+        },
+        SystemPromptEntry {
+            id: "design_ref_rules".to_string(),
+            name: "Rules".to_string(),
+            role: PromptEntryRole::System,
+            content: "Follow this structure in flowing prose:\n1. Overall physique and physical presence\n2. Face coverage - what's hidden, what's visible, and with what\n3. The impression the visible features and posture convey\n4. Clothing and accessories: palette, materials, layering\n5. Silhouette feel - use contrast framing (\"X rather than Y\")\n6. Non-negotiables: what must always be preserved\n\nRules:\n- Be specific with colors (say \"charcoal\" not just \"dark\")\n- Describe materials and texture when visible (leather, cloth, metal, worn vs. clean)\n- Describe what the design is NOT, not just what it is\n- Subject context may include roleplay text, biography, or other non-visual writing. Use only explicit visual facts from the image and text, and ignore everything else\n- Do not quote or paraphrase dialogue, catchphrases, slogans, internal thoughts, scene narration, or backstory lines\n- Tone: directive, written for an artist, no dramatic language\n- Length: 5-7 sentences".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: false,
+        },
+        SystemPromptEntry {
+            id: "design_ref_output".to_string(),
+            name: "Output".to_string(),
+            role: PromptEntryRole::System,
+            content: "Output only the final design reference text. Do not use headers, markdown, lists, or explanations.".to_string(),
             enabled: true,
             injection_position: PromptEntryPosition::Relative,
             injection_depth: 0,

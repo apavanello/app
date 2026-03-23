@@ -4291,10 +4291,10 @@ async fn select_speaker_via_llm_with_tracking(
         &api_key,
         &model.name,
         &messages,
-        None, // system_prompt
+        None,      // system_prompt
         Some(0.3), // Low temperature for consistent selection
         Some(1.0), // top_p
-        500,  // max_tokens - short response
+        500,       // max_tokens - short response
         context_length,
         false, // No streaming for selection
         None,  // request_id

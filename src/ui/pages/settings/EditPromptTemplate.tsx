@@ -42,6 +42,7 @@ import {
   resetAvatarGenerationTemplate,
   resetAvatarEditTemplate,
   resetSceneGenerationTemplate,
+  resetDesignReferenceTemplate,
   renderPromptPreview,
   getRequiredTemplateVariables,
 } from "../../../core/prompts/service";
@@ -57,6 +58,7 @@ import {
   APP_AVATAR_GENERATION_TEMPLATE_ID,
   APP_AVATAR_EDIT_TEMPLATE_ID,
   APP_SCENE_GENERATION_TEMPLATE_ID,
+  APP_DESIGN_REFERENCE_TEMPLATE_ID,
   isProtectedPromptTemplate,
 } from "../../../core/prompts/constants";
 
@@ -68,6 +70,7 @@ type PromptType =
   | "avatar_generation"
   | "avatar_edit"
   | "scene_generation"
+  | "design_reference"
   | "group_chat"
   | "group_chat_roleplay"
   | null;
@@ -169,6 +172,29 @@ const VARIABLES_BY_TYPE: Record<string, Variable[]> = {
       var: "{{scene_request}}",
       label: "Scene Request",
       desc: "Manual or automatic scene image request",
+    },
+  ],
+  design_reference: [
+    { var: "{{subject_name}}", label: "Subject Name", desc: "Name of the subject being described" },
+    {
+      var: "{{subject_description}}",
+      label: "Subject Context",
+      desc: "Character or persona context that can inform the design notes",
+    },
+    {
+      var: "{{current_description}}",
+      label: "Current Notes",
+      desc: "Existing design notes to refine when they match the images",
+    },
+    {
+      var: "{{image[avatar]}}",
+      label: "Avatar Image",
+      desc: "Injected image block for the subject's avatar when available",
+    },
+    {
+      var: "{{image[references]}}",
+      label: "Reference Images",
+      desc: "Injected image block for attached design reference images",
     },
   ],
   group_chat: [
@@ -876,6 +902,8 @@ function getPromptTypeName(type: PromptType): string {
       return "Avatar Image Edit";
     case "scene_generation":
       return "Scene Generation";
+    case "design_reference":
+      return "Design Reference Writer";
     case "group_chat":
       return "Group Chat";
     case "group_chat_roleplay":
@@ -961,7 +989,8 @@ export function EditPromptTemplate() {
       promptType === "reply" ||
       promptType === "avatar_generation" ||
       promptType === "avatar_edit" ||
-      promptType === "scene_generation");
+      promptType === "scene_generation" ||
+      promptType === "design_reference");
 
   const usesEntryEditor = true;
   const quickInsertY = useMotionValue(0);
@@ -1147,6 +1176,8 @@ export function EditPromptTemplate() {
             detectedType = "avatar_edit";
           } else if (template.id === APP_SCENE_GENERATION_TEMPLATE_ID) {
             detectedType = "scene_generation";
+          } else if (template.id === APP_DESIGN_REFERENCE_TEMPLATE_ID) {
+            detectedType = "design_reference";
           } else if (template.id === APP_GROUP_CHAT_TEMPLATE_ID) {
             detectedType = "group_chat";
           } else if (template.id === APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_ID) {
@@ -1324,6 +1355,7 @@ export function EditPromptTemplate() {
         "avatar_generation",
         "avatar_edit",
         "scene_generation",
+        "design_reference",
       ].includes(promptType)
     ) {
       return;
@@ -1353,6 +1385,8 @@ export function EditPromptTemplate() {
         updated = await resetAvatarGenerationTemplate();
       } else if (promptType === "scene_generation") {
         updated = await resetSceneGenerationTemplate();
+      } else if (promptType === "design_reference") {
+        updated = await resetDesignReferenceTemplate();
       } else {
         updated = await resetAvatarEditTemplate();
       }

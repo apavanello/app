@@ -19,6 +19,7 @@ export {
   resetAvatarGenerationTemplate,
   resetAvatarEditTemplate,
   resetSceneGenerationTemplate,
+  resetDesignReferenceTemplate,
   getRequiredTemplateVariables,
   validateTemplateVariables,
 } from "./index";

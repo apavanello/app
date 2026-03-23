@@ -40,6 +40,7 @@ import {
   APP_AVATAR_GENERATION_TEMPLATE_ID,
   APP_AVATAR_EDIT_TEMPLATE_ID,
   APP_SCENE_GENERATION_TEMPLATE_ID,
+  APP_DESIGN_REFERENCE_TEMPLATE_ID,
   isProtectedPromptTemplate,
   isSystemPromptTemplate,
   getPromptTypeLabel,
@@ -280,6 +281,7 @@ function getTemplateIcon(templateId: string) {
     case APP_AVATAR_GENERATION_TEMPLATE_ID:
     case APP_AVATAR_EDIT_TEMPLATE_ID:
     case APP_SCENE_GENERATION_TEMPLATE_ID:
+    case APP_DESIGN_REFERENCE_TEMPLATE_ID:
       return Image;
     default:
       return FileText;

@@ -186,6 +186,14 @@ fn run_bootstrap_tasks(app: &tauri::AppHandle) {
             format!("Failed to ensure scene generation template: {}", err),
         );
     }
+
+    if let Err(err) = chat_manager::prompts::ensure_design_reference_template(app) {
+        utils::log_error(
+            app,
+            "bootstrap",
+            format!("Failed to ensure design reference template: {}", err),
+        );
+    }
 }
 
 pub(crate) fn setup_app(

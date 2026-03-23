@@ -29,6 +29,7 @@ pub enum PromptType {
     AvatarGenerationPrompt,
     AvatarEditPrompt,
     SceneGenerationPrompt,
+    DesignReferencePrompt,
 }
 
 pub fn get_base_prompt(prompt_type: PromptType) -> String {
@@ -47,6 +48,7 @@ pub fn get_base_prompt(prompt_type: PromptType) -> String {
         PromptType::AvatarGenerationPrompt => prompt_engine::default_avatar_generation_prompt(),
         PromptType::AvatarEditPrompt => prompt_engine::default_avatar_edit_prompt(),
         PromptType::SceneGenerationPrompt => prompt_engine::default_scene_generation_prompt(),
+        PromptType::DesignReferencePrompt => prompt_engine::default_design_reference_prompt(),
     }
 }
 
@@ -64,6 +66,7 @@ pub fn get_base_prompt_entries(prompt_type: PromptType) -> Vec<SystemPromptEntry
         PromptType::AvatarGenerationPrompt => prompt_engine::default_avatar_generation_entries(),
         PromptType::AvatarEditPrompt => prompt_engine::default_avatar_edit_entries(),
         PromptType::SceneGenerationPrompt => prompt_engine::default_scene_generation_entries(),
+        PromptType::DesignReferencePrompt => prompt_engine::default_design_reference_entries(),
     }
 }
 

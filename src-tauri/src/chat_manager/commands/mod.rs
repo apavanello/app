@@ -302,6 +302,11 @@ pub fn reset_scene_generation_template(app: AppHandle) -> Result<SystemPromptTem
 }
 
 #[tauri::command]
+pub fn reset_design_reference_template(app: AppHandle) -> Result<SystemPromptTemplate, String> {
+    prompts::reset_design_reference_template(&app)
+}
+
+#[tauri::command]
 pub fn get_required_template_variables(template_id: String) -> Vec<String> {
     prompts::get_required_variables(&template_id)
 }

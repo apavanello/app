@@ -4,7 +4,6 @@ use tauri::AppHandle;
 use crate::api::{api_request, ApiRequest};
 use crate::chat_manager::attachments::{cleanup_attachments, persist_attachments};
 use crate::chat_manager::execution::{find_model_with_credential, prepare_sampling_request};
-use crate::chat_manager::messages::build_multimodal_content;
 use crate::chat_manager::prompts;
 use crate::chat_manager::provider_adapter::adapter_for;
 use crate::chat_manager::request::extract_text;
@@ -569,6 +568,9 @@ fn condense_prompt_whitespace(input: String) -> String {
     output.trim().to_string()
 }
 
+const DESIGN_REFERENCE_AVATAR_TOKEN: &str = "{{image[avatar]}}";
+const DESIGN_REFERENCE_REFERENCES_TOKEN: &str = "{{image[references]}}";
+
 fn render_scene_generation_prompt_content(
     template_content: &str,
     character: &Character,
@@ -697,6 +699,183 @@ fn condense_scene_generation_entries(entries: Vec<SystemPromptEntry>) -> Vec<Sys
         interval_turns: None,
         system_prompt: true,
     }]
+}
+
+fn render_design_reference_prompt_content(
+    template_content: &str,
+    subject_name: &str,
+    subject_description: Option<&str>,
+    current_description: Option<&str>,
+) -> String {
+    let mut prompt = template_content.to_string();
+    prompt = prompt.replace("{{subject_name}}", subject_name);
+    prompt = prompt.replace("{{subject_description}}", subject_description.unwrap_or(""));
+    prompt = prompt.replace("{{current_description}}", current_description.unwrap_or(""));
+    condense_prompt_whitespace(prompt)
+}
+
+fn condense_design_reference_entries(entries: Vec<SystemPromptEntry>) -> Vec<SystemPromptEntry> {
+    let mut merged_sections = Vec::new();
+    let mut image_entries = Vec::new();
+
+    for entry in entries {
+        let trimmed = entry.content.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if trimmed.contains(DESIGN_REFERENCE_AVATAR_TOKEN)
+            || trimmed.contains(DESIGN_REFERENCE_REFERENCES_TOKEN)
+        {
+            image_entries.push(entry);
+            continue;
+        }
+
+        merged_sections.push(trimmed.to_string());
+    }
+
+    let mut condensed = Vec::new();
+    if !merged_sections.is_empty() {
+        condensed.push(SystemPromptEntry {
+            id: "design_ref_condensed_system".to_string(),
+            name: "Condensed Design Reference Prompt".to_string(),
+            role: super::types::PromptEntryRole::System,
+            content: merged_sections.join("\n\n"),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: true,
+        });
+    }
+    condensed.extend(image_entries);
+    condensed
+}
+
+fn load_design_reference_prompt_entries(app: &AppHandle) -> (Vec<SystemPromptEntry>, bool) {
+    match prompts::get_template(app, prompts::APP_DESIGN_REFERENCE_TEMPLATE_ID) {
+        Ok(Some(template)) => {
+            if !template.entries.is_empty() {
+                (template.entries, template.condense_prompt_entries)
+            } else if !template.content.trim().is_empty() {
+                (
+                    vec![SystemPromptEntry {
+                        id: "design_ref_single_entry".to_string(),
+                        name: "Design Reference Prompt".to_string(),
+                        role: super::types::PromptEntryRole::System,
+                        content: template.content,
+                        enabled: true,
+                        injection_position: PromptEntryPosition::Relative,
+                        injection_depth: 0,
+                        conditional_min_messages: None,
+                        interval_turns: None,
+                        system_prompt: true,
+                    }],
+                    template.condense_prompt_entries,
+                )
+            } else {
+                (
+                    get_base_prompt_entries(PromptType::DesignReferencePrompt),
+                    false,
+                )
+            }
+        }
+        _ => (
+            get_base_prompt_entries(PromptType::DesignReferencePrompt),
+            false,
+        ),
+    }
+}
+
+fn render_design_reference_prompt_entries(
+    app: &AppHandle,
+    subject_name: &str,
+    subject_description: Option<&str>,
+    current_description: Option<&str>,
+) -> Vec<SystemPromptEntry> {
+    let (template_entries, condense_prompt_entries) = load_design_reference_prompt_entries(app);
+    let mut rendered_entries = Vec::new();
+
+    for entry in template_entries {
+        if !entry.enabled && !entry.system_prompt {
+            continue;
+        }
+        let rendered = render_design_reference_prompt_content(
+            &entry.content,
+            subject_name,
+            subject_description,
+            current_description,
+        );
+        if rendered.trim().is_empty() {
+            continue;
+        }
+        let mut next_entry = entry.clone();
+        next_entry.content = rendered;
+        rendered_entries.push(next_entry);
+    }
+
+    if condense_prompt_entries {
+        condense_design_reference_entries(rendered_entries)
+    } else {
+        rendered_entries
+    }
+}
+
+fn build_design_reference_prompt_content_with_images(
+    content: &str,
+    avatar_image: Option<&str>,
+    reference_images: &[String],
+) -> Option<Value> {
+    if !content.contains(DESIGN_REFERENCE_AVATAR_TOKEN)
+        && !content.contains(DESIGN_REFERENCE_REFERENCES_TOKEN)
+    {
+        return None;
+    }
+
+    let mut parts: Vec<Value> = Vec::new();
+    if content.contains(DESIGN_REFERENCE_AVATAR_TOKEN) {
+        if let Some(image) = avatar_image.filter(|value| !value.trim().is_empty()) {
+            parts.extend(build_scene_prompt_image_parts(&[image.to_string()]));
+        }
+    }
+    if content.contains(DESIGN_REFERENCE_REFERENCES_TOKEN) && !reference_images.is_empty() {
+        parts.extend(build_scene_prompt_image_parts(reference_images));
+    }
+
+    if parts.is_empty() {
+        None
+    } else {
+        Some(Value::Array(parts))
+    }
+}
+
+fn design_reference_prompt_entry_to_message(
+    entry: &SystemPromptEntry,
+    system_role: &str,
+    avatar_image: Option<&str>,
+    reference_images: &[String],
+) -> Option<Value> {
+    if let Some(content) = build_design_reference_prompt_content_with_images(
+        &entry.content,
+        avatar_image,
+        reference_images,
+    ) {
+        return Some(json!({ "role": "user", "content": content }));
+    }
+
+    let role = match entry.role {
+        super::types::PromptEntryRole::System => system_role,
+        super::types::PromptEntryRole::User => "user",
+        super::types::PromptEntryRole::Assistant => "assistant",
+    };
+
+    let trimmed = entry.content.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    Some(json!({ "role": role, "content": trimmed }))
 }
 
 fn load_scene_generation_prompt_entries(app: &AppHandle) -> (Vec<SystemPromptEntry>, bool) {
@@ -1179,74 +1358,46 @@ pub async fn chat_generate_design_reference_description(
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
-    let mut image_inputs = Vec::new();
-    if let Some(image) = avatar_image
+    let avatar_input = avatar_image
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-    {
-        image_inputs.push(image.to_string());
-    }
-    image_inputs.extend(
-        reference_images
-            .into_iter()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty()),
-    );
+        .map(|value| value.to_string());
+    let reference_inputs = reference_images
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
 
-    if image_inputs.is_empty() {
+    if avatar_input.is_none() && reference_inputs.is_empty() {
         return Err("At least one avatar or reference image is required".to_string());
     }
 
     let system_role = adapter_for(credential).system_role().into_owned();
     let streaming_enabled = stream.unwrap_or(true) && adapter_for(credential).supports_stream();
-    let system_prompt = [
-        "Write one concise canonical visual reference description for future scene generation.",
-        "Focus only on stable appearance: face visibility, hair, build, age presentation, outfit silhouette, materials, colors, accessories, and art direction.",
-        "Do not write backstory, personality, scene action, camera directions, or poetic prose.",
-        "If the subject's face is hidden or obscured, say so clearly.",
-        "If the references disagree, keep only features supported by the majority of images.",
-        "Output only the final description.",
-    ]
-    .join("\n");
-
-    let mut request_sections = vec![
-        format!("Subject: {}", subject_name),
-        "Use the attached avatar and reference images to write a stable design note for future image prompts."
-            .to_string(),
-    ];
-
-    if let Some(description) = subject_description {
-        request_sections.push(format!("Character context:\n{}", description));
-    }
-    if let Some(existing) = current_description {
-        request_sections.push(format!(
-            "Current notes to refine if they match the images:\n{}",
-            existing
-        ));
-    }
-
-    let image_attachments = image_inputs
-        .iter()
-        .enumerate()
-        .map(|(index, image)| ImageAttachment {
-            id: format!("design-ref-{}", index),
-            data: image.clone(),
-            mime_type: "image/*".to_string(),
-            filename: None,
-            width: None,
-            height: None,
-            storage_path: None,
+    let prompt_entries = render_design_reference_prompt_entries(
+        &app,
+        subject_name,
+        subject_description,
+        current_description,
+    );
+    let (relative_entries, in_chat_entries) = partition_prompt_entries(prompt_entries);
+    let messages_for_api = relative_entries
+        .into_iter()
+        .chain(in_chat_entries.into_iter())
+        .filter_map(|entry| {
+            design_reference_prompt_entry_to_message(
+                &entry,
+                &system_role,
+                avatar_input.as_deref(),
+                &reference_inputs,
+            )
         })
         .collect::<Vec<_>>();
 
-    let messages_for_api = vec![
-        json!({ "role": system_role, "content": system_prompt }),
-        json!({
-            "role": "user",
-            "content": build_multimodal_content(&request_sections.join("\n\n"), &image_attachments),
-        }),
-    ];
+    if messages_for_api.is_empty() {
+        return Err("Design reference template rendered no prompt content".to_string());
+    }
 
     let preview_session = Session {
         id: "scene-writer-preview".to_string(),

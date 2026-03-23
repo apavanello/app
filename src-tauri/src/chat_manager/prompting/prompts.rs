@@ -21,6 +21,7 @@ pub const APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_ID: &str = "prompt_app_group_chat_rol
 pub const APP_AVATAR_GENERATION_TEMPLATE_ID: &str = "prompt_app_avatar_generation";
 pub const APP_AVATAR_EDIT_TEMPLATE_ID: &str = "prompt_app_avatar_edit";
 pub const APP_SCENE_GENERATION_TEMPLATE_ID: &str = "prompt_app_scene_generation";
+pub const APP_DESIGN_REFERENCE_TEMPLATE_ID: &str = "prompt_app_design_reference";
 const APP_DEFAULT_TEMPLATE_NAME: &str = "App Default";
 const APP_DYNAMIC_SUMMARY_TEMPLATE_NAME: &str = "Dynamic Memory: Summarizer";
 const APP_DYNAMIC_MEMORY_TEMPLATE_NAME: &str = "Dynamic Memory: Memory Manager";
@@ -29,6 +30,7 @@ const APP_HELP_ME_REPLY_CONVERSATIONAL_TEMPLATE_NAME: &str = "Reply Helper (Conv
 const APP_AVATAR_GENERATION_TEMPLATE_NAME: &str = "Avatar Generation";
 const APP_AVATAR_EDIT_TEMPLATE_NAME: &str = "Avatar Image Edit";
 const APP_SCENE_GENERATION_TEMPLATE_NAME: &str = "Scene Generation";
+const APP_DESIGN_REFERENCE_TEMPLATE_NAME: &str = "Design Reference Writer";
 
 fn supports_entry_prompts(_id: &str) -> bool {
     true
@@ -233,6 +235,10 @@ pub fn get_required_variables(template_id: &str) -> Vec<String> {
         APP_SCENE_GENERATION_TEMPLATE_ID => vec![
             "{{recent_messages}}".to_string(),
             "{{scene_request}}".to_string(),
+        ],
+        APP_DESIGN_REFERENCE_TEMPLATE_ID => vec![
+            "{{subject_name}}".to_string(),
+            "{{image[avatar]}}".to_string(),
         ],
         _ => vec![],
     }
@@ -614,6 +620,7 @@ pub fn is_app_default_template(id: &str) -> bool {
         || id == APP_AVATAR_GENERATION_TEMPLATE_ID
         || id == APP_AVATAR_EDIT_TEMPLATE_ID
         || id == APP_SCENE_GENERATION_TEMPLATE_ID
+        || id == APP_DESIGN_REFERENCE_TEMPLATE_ID
 }
 
 pub fn reset_app_default_template(app: &AppHandle) -> Result<SystemPromptTemplate, String> {
@@ -838,6 +845,39 @@ pub fn ensure_scene_generation_template(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+pub fn ensure_design_reference_template(app: &AppHandle) -> Result<(), String> {
+    let conn = open_db(app)?;
+    let now = now();
+
+    if get_template(app, APP_DESIGN_REFERENCE_TEMPLATE_ID)?.is_none() {
+        let content = get_base_prompt(PromptType::DesignReferencePrompt);
+        let entries = get_base_prompt_entries(PromptType::DesignReferencePrompt);
+        let entries_json = serde_json::to_string(&entries)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        conn.execute(
+            "INSERT OR IGNORE INTO prompt_templates (id, name, scope, target_ids, content, entries, created_at, updated_at) VALUES (?1, ?2, ?3, '[]', ?4, ?5, ?6, ?6)",
+            params![
+                APP_DESIGN_REFERENCE_TEMPLATE_ID,
+                APP_DESIGN_REFERENCE_TEMPLATE_NAME,
+                scope_to_str(&PromptScope::AppWide),
+                content,
+                entries_json,
+                now
+            ],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    } else {
+        let _ = maybe_backfill_entries(
+            app,
+            APP_DESIGN_REFERENCE_TEMPLATE_ID,
+            PromptType::DesignReferencePrompt,
+            get_base_prompt_entries(PromptType::DesignReferencePrompt),
+        );
+    }
+
+    Ok(())
+}
+
 pub fn reset_help_me_reply_template(app: &AppHandle) -> Result<SystemPromptTemplate, String> {
     let content = get_base_prompt(PromptType::HelpMeReplyPrompt);
     let entries = get_base_prompt_entries(PromptType::HelpMeReplyPrompt);
@@ -906,6 +946,21 @@ pub fn reset_scene_generation_template(app: &AppHandle) -> Result<SystemPromptTe
     update_template(
         app,
         APP_SCENE_GENERATION_TEMPLATE_ID.to_string(),
+        None,
+        None,
+        None,
+        Some(content.clone()),
+        Some(entries),
+        None,
+    )
+}
+
+pub fn reset_design_reference_template(app: &AppHandle) -> Result<SystemPromptTemplate, String> {
+    let content = get_base_prompt(PromptType::DesignReferencePrompt);
+    let entries = get_base_prompt_entries(PromptType::DesignReferencePrompt);
+    update_template(
+        app,
+        APP_DESIGN_REFERENCE_TEMPLATE_ID.to_string(),
         None,
         None,
         None,

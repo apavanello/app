@@ -168,6 +168,7 @@ macro_rules! invoke_handler {
             crate::chat_manager::reset_avatar_generation_template,
             crate::chat_manager::reset_avatar_edit_template,
             crate::chat_manager::reset_scene_generation_template,
+            crate::chat_manager::reset_design_reference_template,
             crate::chat_manager::get_required_template_variables,
             crate::chat_manager::validate_template_variables,
             crate::chat_manager::render_prompt_preview,

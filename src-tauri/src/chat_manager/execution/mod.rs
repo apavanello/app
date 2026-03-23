@@ -119,10 +119,12 @@ pub(super) fn resolve_temperature(
         return Some(value);
     }
     if is_llama_cpp_model(model) {
-        return Some(llama_sampler_profile_defaults(
-            resolve_llama_sampler_profile(session, model, settings).as_deref(),
-        )
-        .temperature);
+        return Some(
+            llama_sampler_profile_defaults(
+                resolve_llama_sampler_profile(session, model, settings).as_deref(),
+            )
+            .temperature,
+        );
     }
     None
 }
@@ -143,10 +145,12 @@ pub(super) fn resolve_top_p(session: &Session, model: &Model, settings: &Setting
         return Some(value);
     }
     if is_llama_cpp_model(model) {
-        return Some(llama_sampler_profile_defaults(
-            resolve_llama_sampler_profile(session, model, settings).as_deref(),
-        )
-        .top_p);
+        return Some(
+            llama_sampler_profile_defaults(
+                resolve_llama_sampler_profile(session, model, settings).as_deref(),
+            )
+            .top_p,
+        );
     }
     None
 }

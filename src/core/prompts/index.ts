@@ -97,6 +97,10 @@ export async function resetSceneGenerationTemplate(): Promise<SystemPromptTempla
   return await invoke<SystemPromptTemplate>("reset_scene_generation_template");
 }
 
+export async function resetDesignReferenceTemplate(): Promise<SystemPromptTemplate> {
+  return await invoke<SystemPromptTemplate>("reset_design_reference_template");
+}
+
 export async function getRequiredTemplateVariables(templateId: string): Promise<string[]> {
   return await invoke<string[]>("get_required_template_variables", { templateId });
 }
