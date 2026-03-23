@@ -7,7 +7,7 @@ import {
   setCharacterLorebooks,
 } from "../../../../core/storage";
 import { saveAvatar } from "../../../../core/storage/avatars";
-import { convertToImageRef } from "../../../../core/storage/images";
+import { convertToImageRef, convertToImageUrl } from "../../../../core/storage/images";
 import type {
   AvatarCrop,
   Model,
@@ -713,7 +713,9 @@ export function useCharacterForm(draftCharacter?: any) {
             dispatch({ type: "SET_IMPORTING_AVATAR", payload: false });
           }
         } else {
-          dispatch({ type: "SET_AVATAR_PATH", payload: characterData.avatarData });
+          const resolvedAvatarPath =
+            (await convertToImageUrl(characterData.avatarData)) ?? characterData.avatarData;
+          dispatch({ type: "SET_AVATAR_PATH", payload: resolvedAvatarPath });
           dispatch({ type: "SET_AVATAR_ROUND_PATH", payload: null });
           dispatch({ type: "SET_AVATAR_CROP", payload: null });
           dispatch({ type: "SET_IMPORTING_AVATAR", payload: false });

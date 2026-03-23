@@ -14,6 +14,7 @@ use tauri::Manager;
 
 use super::db::{now_ms, open_db};
 use super::legacy::storage_root;
+use super::media::storage_write_image_bytes;
 use crate::storage_manager::internal_read_settings;
 use crate::utils::log_info;
 
@@ -2062,6 +2063,7 @@ fn build_character_import_preview(
 
 #[tauri::command]
 pub fn character_import_preview_from_bytes(
+    app: tauri::AppHandle,
     filename: String,
     data: Vec<u8>,
 ) -> Result<String, String> {
@@ -2076,10 +2078,9 @@ pub fn character_import_preview_from_bytes(
     let (mut package, format) = parse_character_import_payload(&raw_value)?;
 
     if filename.to_ascii_lowercase().ends_with(".png") {
-        package.avatar_data = Some(format!(
-            "data:image/png;base64,{}",
-            general_purpose::STANDARD.encode(&data)
-        ));
+        let image_id = format!("import-preview-{}", uuid::Uuid::new_v4());
+        storage_write_image_bytes(&app, &image_id, &data)?;
+        package.avatar_data = Some(image_id);
     }
 
     build_character_import_preview(package, format)
