@@ -106,6 +106,7 @@ export function ChatConversationPage() {
   const [groupBranchError, setGroupBranchError] = useState<string | null>(null);
   const [groupBranchCreating, setGroupBranchCreating] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ src: string; alt: string } | null>(null);
+  const [selectedImagePromptExpanded, setSelectedImagePromptExpanded] = useState(false);
   const [supportsImageInput, setSupportsImageInput] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
   const audioCacheRef = useRef<{
@@ -182,6 +183,7 @@ export function ChatConversationPage() {
 
   useEffect(() => {
     if (!selectedImage) return;
+    setSelectedImagePromptExpanded(false);
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -2376,7 +2378,7 @@ export function ChatConversationPage() {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -8 }}
                   transition={{ duration: 0.18, delay: 0.04 }}
-                  className="w-full max-w-3xl rounded-[32px] border border-white/12 bg-white/[0.045] p-3 backdrop-blur-xl lg:order-none lg:flex lg:h-full lg:max-w-none lg:flex-col lg:rounded-[38px] lg:border-white/10 lg:bg-white/[0.03] lg:p-4"
+                  className="hidden w-full max-w-3xl rounded-[32px] border border-white/12 bg-white/[0.045] p-3 backdrop-blur-xl lg:order-none lg:flex lg:h-full lg:max-w-none lg:flex-col lg:rounded-[38px] lg:border-white/10 lg:bg-white/[0.03] lg:p-4"
                 >
                   <div className="rounded-[18px] border border-white/10 bg-black/35 px-4 py-3 lg:flex lg:h-full lg:flex-col lg:rounded-[24px] lg:border-white/8 lg:bg-black/30 lg:px-5 lg:py-5">
                     <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/45 lg:mb-4 lg:text-[10px] lg:tracking-[0.28em]">
@@ -2399,6 +2401,52 @@ export function ChatConversationPage() {
                 alt={selectedImage.alt}
                 className="max-h-[78vh] max-w-full rounded-[28px] object-contain shadow-[0_30px_80px_rgba(0,0,0,0.45)] lg:justify-self-center lg:max-h-[90vh] lg:max-w-[min(100%,920px)]"
               />
+
+              {selectedImagePrompt && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 8 }}
+                  transition={{ duration: 0.18, delay: 0.04 }}
+                  className="w-full max-w-3xl rounded-[24px] border border-white/12 bg-white/[0.045] p-3 backdrop-blur-xl lg:hidden"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSelectedImagePromptExpanded((current) => !current)}
+                    className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-white/10 bg-black/35 px-4 py-3 text-left"
+                  >
+                    <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/45">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-300/80" />
+                      Image Prompt
+                    </div>
+                    <ChevronDown
+                      size={18}
+                      className={cn(
+                        "shrink-0 text-white/55 transition-transform duration-200",
+                        selectedImagePromptExpanded && "rotate-180",
+                      )}
+                    />
+                  </button>
+
+                  <AnimatePresence initial={false}>
+                    {selectedImagePromptExpanded && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.18 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="mt-3 rounded-[18px] border border-white/10 bg-black/35 px-4 py-3">
+                          <p className="max-h-[26vh] overflow-y-auto pr-1 text-sm leading-relaxed text-white/82">
+                            {selectedImagePrompt}
+                          </p>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              )}
             </motion.div>
           </motion.div>
         )}
