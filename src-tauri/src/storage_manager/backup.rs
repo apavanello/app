@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use tauri::{Emitter, Manager};
 use walkdir::WalkDir;
 use zip::write::SimpleFileOptions;
@@ -114,6 +114,72 @@ fn get_downloads_dir() -> Result<PathBuf, String> {
     {
         dirs::download_dir().ok_or_else(|| "Could not find Downloads directory".to_string())
     }
+}
+
+fn archive_name_targets_media(name: &str) -> bool {
+    let normalized = name.replace('\\', "/");
+    normalized.starts_with("images/")
+        || normalized.starts_with("avatars/")
+        || normalized.starts_with("attachments/")
+        || normalized.starts_with("sessions/")
+        || normalized.starts_with("generated_images/")
+}
+
+fn require_encrypted_backup(manifest: &BackupManifest) -> Result<(), String> {
+    if manifest.encrypted {
+        Ok(())
+    } else {
+        Err("Unencrypted backups are no longer supported. Create a password-protected backup instead.".to_string())
+    }
+}
+
+fn require_non_empty_password<'a>(
+    password: Option<&'a str>,
+    context: &str,
+) -> Result<&'a str, String> {
+    let Some(password) = password
+        .map(str::trim)
+        .filter(|password| !password.is_empty())
+    else {
+        return Err(format!("Password required for {}", context));
+    };
+
+    Ok(password)
+}
+
+fn sanitize_media_archive_name(
+    name: &str,
+    strip_encryption_suffix: bool,
+) -> Result<PathBuf, String> {
+    let normalized = name.replace('\\', "/");
+    let trimmed = normalized.trim_end_matches('/');
+    let candidate = if strip_encryption_suffix {
+        trimmed
+            .strip_suffix(".enc")
+            .ok_or_else(|| format!("Invalid encrypted media path in backup: {}", name))?
+    } else {
+        trimmed
+    };
+
+    let path = Path::new(candidate);
+    let mut components = path.components();
+    let Some(Component::Normal(first)) = components.next() else {
+        return Err(format!("Invalid media path in backup: {}", name));
+    };
+
+    let root = first.to_string_lossy();
+    if !matches!(
+        root.as_ref(),
+        "images" | "avatars" | "attachments" | "sessions" | "generated_images"
+    ) {
+        return Err(format!("Unexpected media root in backup: {}", name));
+    }
+
+    if !components.all(|component| matches!(component, Component::Normal(_))) {
+        return Err(format!("Unsafe media path in backup: {}", name));
+    }
+
+    Ok(path.to_path_buf())
 }
 
 // ============================================================================
@@ -1055,17 +1121,16 @@ pub async fn backup_export(
         ),
     );
 
-    // Prepare encryption if password provided
-    let encryption = if let Some(ref pwd) = password {
-        let mut salt = [0u8; 16];
-        let mut nonce = [0u8; 24];
-        OsRng.fill_bytes(&mut salt);
-        OsRng.fill_bytes(&mut nonce);
-        let key = derive_key_from_password(pwd, &salt);
-        Some((salt, nonce, key))
-    } else {
-        None
-    };
+    let password = require_non_empty_password(
+        password.as_deref(),
+        "backup export. Unencrypted backups are no longer allowed",
+    )?;
+    let mut salt = [0u8; 16];
+    let mut nonce = [0u8; 24];
+    OsRng.fill_bytes(&mut salt);
+    OsRng.fill_bytes(&mut nonce);
+    let key = derive_key_from_password(password, &salt);
+    let encryption = Some((salt, nonce, key));
 
     // Create the zip file
     let file = File::create(&output_path)
@@ -1302,34 +1367,24 @@ pub async fn backup_export(
 
     let app_version = crate::utils::app_version(&app);
 
-    let manifest = if let Some((salt, nonce, key)) = &encryption {
-        // Create encrypted marker to verify password on import
-        let marker = b"LETTUCE_BACKUP_VERIFIED";
-        let encrypted_marker = encrypt_data(marker, key, nonce)?;
+    let (salt, nonce, key) = encryption
+        .as_ref()
+        .expect("backup export encryption should always be configured");
+    let marker = b"LETTUCE_BACKUP_VERIFIED";
+    let encrypted_marker = encrypt_data(marker, key, nonce)?;
 
-        // Add encrypted marker
-        zip.start_file("encrypted_marker.bin", options)
-            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
-        zip.write_all(&encrypted_marker)
-            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    zip.start_file("encrypted_marker.bin", options)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    zip.write_all(&encrypted_marker)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
-        BackupManifest {
-            version: BACKUP_VERSION,
-            created_at: now,
-            app_version,
-            encrypted: true,
-            salt: Some(general_purpose::STANDARD.encode(salt)),
-            nonce: Some(general_purpose::STANDARD.encode(nonce)),
-        }
-    } else {
-        BackupManifest {
-            version: BACKUP_VERSION,
-            created_at: now,
-            app_version,
-            encrypted: false,
-            salt: None,
-            nonce: None,
-        }
+    let manifest = BackupManifest {
+        version: BACKUP_VERSION,
+        created_at: now,
+        app_version,
+        encrypted: true,
+        salt: Some(general_purpose::STANDARD.encode(salt)),
+        nonce: Some(general_purpose::STANDARD.encode(nonce)),
     };
 
     // Add manifest
@@ -2511,9 +2566,7 @@ pub fn backup_verify_password(
         crate::utils::err_msg(module_path!(), line!(), format!("Invalid manifest: {}", e))
     })?;
 
-    if !manifest.encrypted {
-        return Ok(true); // No password needed
-    }
+    require_encrypted_backup(&manifest)?;
 
     let salt_b64 = manifest
         .salt
@@ -2534,7 +2587,9 @@ pub fn backup_verify_password(
     salt.copy_from_slice(&salt_vec);
     nonce.copy_from_slice(&nonce_vec);
 
-    let key = derive_key_from_password(&password, &salt);
+    let password =
+        require_non_empty_password(Some(password.as_str()), "backup password verification")?;
+    let key = derive_key_from_password(password, &salt);
 
     // Try to decrypt the marker
     drop(manifest_file);
@@ -2674,6 +2729,8 @@ pub async fn backup_import(
         format!("Starting backup import v2 from {:?}", backup_path),
     );
 
+    require_encrypted_backup(&manifest)?;
+
     // Check backup version - only support v2
     if manifest.version < BACKUP_VERSION {
         return Err(format!(
@@ -2684,9 +2741,7 @@ pub async fn backup_import(
 
     // Prepare encryption params if encrypted
     let encryption_params: Option<([u8; 32], [u8; 24])> = if manifest.encrypted {
-        let pwd = password
-            .as_ref()
-            .ok_or_else(|| "Password required for encrypted backup".to_string())?;
+        let pwd = require_non_empty_password(password.as_deref(), "backup import")?;
 
         let salt_b64 = manifest
             .salt
@@ -3161,20 +3216,14 @@ pub async fn backup_import(
             .by_index(i)
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
         let file_name = file.name().to_string();
-
-        // Only process media directories
-        let is_media = file_name.starts_with("images/")
-            || file_name.starts_with("avatars/")
-            || file_name.starts_with("attachments/")
-            || file_name.starts_with("sessions/")
-            || file_name.starts_with("generated_images/");
-
-        if !is_media {
+        if !archive_name_targets_media(&file_name) {
             continue;
         }
 
+        let relative_path = sanitize_media_archive_name(&file_name, false)?;
+
         if file.is_dir() {
-            let outpath = staging_dir.join(&file_name);
+            let outpath = staging_dir.join(&relative_path);
             fs::create_dir_all(&outpath)
                 .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
         } else {
@@ -3192,13 +3241,13 @@ pub async fn backup_import(
                             format!("Failed to decrypt {}: {}", file_name, e),
                         )
                     })?;
-                    let out_name = file_name[..file_name.len() - 4].to_string();
+                    let out_name = sanitize_media_archive_name(&file_name, true)?;
                     (staging_dir.join(out_name), decrypted)
                 } else {
-                    (staging_dir.join(&file_name), contents)
+                    (staging_dir.join(&relative_path), contents)
                 }
             } else {
-                (staging_dir.join(&file_name), contents)
+                (staging_dir.join(&relative_path), contents)
             };
 
             if let Some(parent) = outpath.parent() {
@@ -3322,6 +3371,49 @@ fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_media_archive_name;
+    use std::path::PathBuf;
+
+    #[test]
+    fn sanitize_media_archive_name_accepts_safe_paths() {
+        assert_eq!(
+            sanitize_media_archive_name("images/example.png", false).unwrap(),
+            PathBuf::from("images/example.png")
+        );
+        assert_eq!(
+            sanitize_media_archive_name("images/example.png.enc", true).unwrap(),
+            PathBuf::from("images/example.png")
+        );
+        assert_eq!(
+            sanitize_media_archive_name("avatars/character-1/", false).unwrap(),
+            PathBuf::from("avatars/character-1")
+        );
+    }
+
+    #[test]
+    fn sanitize_media_archive_name_rejects_traversal() {
+        assert!(sanitize_media_archive_name("images/../../tmp/pwned", false).is_err());
+        assert!(sanitize_media_archive_name("images\\..\\..\\tmp\\pwned", false).is_err());
+        assert!(sanitize_media_archive_name("/tmp/pwned", false).is_err());
+    }
+
+    #[test]
+    fn require_encrypted_backup_rejects_plaintext_archives() {
+        let manifest = super::BackupManifest {
+            version: super::BACKUP_VERSION,
+            created_at: 0,
+            app_version: "test".to_string(),
+            encrypted: false,
+            salt: None,
+            nonce: None,
+        };
+
+        assert!(super::require_encrypted_backup(&manifest).is_err());
+    }
 }
 
 /// List available backups in downloads directory
@@ -3552,9 +3644,7 @@ pub fn backup_verify_password_from_bytes(data: Vec<u8>, password: String) -> Res
         crate::utils::err_msg(module_path!(), line!(), format!("Invalid manifest: {}", e))
     })?;
 
-    if !manifest.encrypted {
-        return Ok(true);
-    }
+    require_encrypted_backup(&manifest)?;
 
     let salt_b64 = manifest
         .salt
@@ -3575,7 +3665,9 @@ pub fn backup_verify_password_from_bytes(data: Vec<u8>, password: String) -> Res
     salt.copy_from_slice(&salt_vec);
     nonce.copy_from_slice(&nonce_vec);
 
-    let key = derive_key_from_password(&password, &salt);
+    let password =
+        require_non_empty_password(Some(password.as_str()), "backup password verification")?;
+    let key = derive_key_from_password(password, &salt);
 
     drop(manifest_file);
     let mut marker_file = archive.by_name("encrypted_marker.bin").map_err(|e| {
@@ -3637,6 +3729,8 @@ pub async fn backup_import_from_bytes(
         })?
     };
 
+    require_encrypted_backup(&manifest)?;
+
     // Check backup version - only support v2
     if manifest.version < BACKUP_VERSION {
         return Err(format!(
@@ -3647,9 +3741,7 @@ pub async fn backup_import_from_bytes(
 
     // Prepare encryption params if encrypted
     let encryption_params: Option<([u8; 32], [u8; 24])> = if manifest.encrypted {
-        let pwd = password
-            .as_ref()
-            .ok_or_else(|| "Password required for encrypted backup".to_string())?;
+        let pwd = require_non_empty_password(password.as_deref(), "backup import from bytes")?;
 
         let salt_b64 = manifest
             .salt
@@ -4046,20 +4138,14 @@ pub async fn backup_import_from_bytes(
             .by_index(i)
             .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
         let file_name = file.name().to_string();
-
-        // Only process media directories
-        let is_media = file_name.starts_with("images/")
-            || file_name.starts_with("avatars/")
-            || file_name.starts_with("attachments/")
-            || file_name.starts_with("sessions/")
-            || file_name.starts_with("generated_images/");
-
-        if !is_media {
+        if !archive_name_targets_media(&file_name) {
             continue;
         }
 
+        let relative_path = sanitize_media_archive_name(&file_name, false)?;
+
         if file.is_dir() {
-            let outpath = staging_dir.join(&file_name);
+            let outpath = staging_dir.join(&relative_path);
             fs::create_dir_all(&outpath)
                 .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
         } else {
@@ -4077,13 +4163,13 @@ pub async fn backup_import_from_bytes(
                             format!("Failed to decrypt {}: {}", file_name, e),
                         )
                     })?;
-                    let out_name = file_name[..file_name.len() - 4].to_string();
+                    let out_name = sanitize_media_archive_name(&file_name, true)?;
                     (staging_dir.join(out_name), decrypted)
                 } else {
-                    (staging_dir.join(&file_name), contents)
+                    (staging_dir.join(&relative_path), contents)
                 }
             } else {
-                (staging_dir.join(&file_name), contents)
+                (staging_dir.join(&relative_path), contents)
             };
 
             if let Some(parent) = outpath.parent() {
@@ -4226,11 +4312,11 @@ pub async fn backup_check_dynamic_memory(
         ),
     );
 
+    require_encrypted_backup(&manifest)?;
+
     // Prepare encryption params if needed
     let encryption_params: Option<([u8; 32], [u8; 24])> = if manifest.encrypted {
-        let pwd = password
-            .as_ref()
-            .ok_or_else(|| "Password required for encrypted backup".to_string())?;
+        let pwd = require_non_empty_password(password.as_deref(), "backup inspection")?;
 
         let salt_b64 = manifest
             .salt
@@ -4390,11 +4476,11 @@ pub async fn backup_check_dynamic_memory_from_bytes(
         ),
     );
 
+    require_encrypted_backup(&manifest)?;
+
     // Prepare encryption params if needed
     let encryption_params: Option<([u8; 32], [u8; 24])> = if manifest.encrypted {
-        let pwd = password
-            .as_ref()
-            .ok_or_else(|| "Password required for encrypted backup".to_string())?;
+        let pwd = require_non_empty_password(password.as_deref(), "backup inspection")?;
 
         let salt_b64 = manifest
             .salt
