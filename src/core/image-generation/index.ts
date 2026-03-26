@@ -1,6 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { Model, ProviderCredential, Settings } from "../storage/schemas";
+import type {
+  AdvancedModelSettings,
+  Model,
+  ProviderCredential,
+  Settings,
+} from "../storage/schemas";
 import { convertToImageUrl } from "../storage/images";
 import { getPromptTemplate } from "../prompts/service";
 import { isRenderableImageUrl } from "../utils/image";
@@ -17,6 +22,7 @@ export interface ImageGenerationRequest {
   model: string;
   providerId: string;
   credentialId: string;
+  advancedModelSettings?: AdvancedModelSettings | null;
   inputImages?: string[];
   size?: string;
   quality?: string;
@@ -62,6 +68,7 @@ export async function generateImage(
       model: request.model,
       providerId: request.providerId,
       credentialId: request.credentialId,
+      advancedModelSettings: request.advancedModelSettings ?? null,
       inputImages: request.inputImages ?? null,
       size: request.size ?? null,
       quality: request.quality ?? null,
@@ -291,49 +298,26 @@ export async function resolveGeneratedImageUrl(image: GeneratedImage): Promise<s
 }
 
 /**
- * Image generation model presets for common providers
- */
-export const IMAGE_MODEL_PRESETS = {
-  openai: {
-    models: [
-      { id: "dall-e-3", name: "DALL-E 3", sizes: ["1024x1024", "1024x1792", "1792x1024"] },
-      { id: "dall-e-2", name: "DALL-E 2", sizes: ["256x256", "512x512", "1024x1024"] },
-      {
-        id: "gpt-image-1",
-        name: "GPT Image 1",
-        sizes: ["1024x1024", "1024x1536", "1536x1024", "auto"],
-      },
-    ],
-    qualities: ["standard", "hd"],
-    styles: ["vivid", "natural"],
-  },
-  gemini: {
-    models: [
-      {
-        id: "gemini-2.0-flash-preview-image-generation",
-        name: "Gemini 2.0 Flash (Image)",
-        sizes: [],
-      },
-      { id: "imagen-3.0-generate-002", name: "Imagen 3", sizes: ["1024x1024"] },
-    ],
-    qualities: [],
-    styles: [],
-  },
-  openrouter: {
-    // OpenRouter image models are dynamic, fetched via API
-    models: [],
-    qualities: [],
-    styles: [],
-  },
-} as const;
-
-/**
  * Get available sizes for a model
  */
 export function getModelSizes(providerId: string, modelId: string): readonly string[] {
-  const provider = IMAGE_MODEL_PRESETS[providerId as keyof typeof IMAGE_MODEL_PRESETS];
-  if (!provider) return ["1024x1024"];
+  if (providerId === "openai") {
+    if (modelId === "dall-e-3") {
+      return ["1024x1024", "1024x1792", "1792x1024"];
+    }
 
-  const model = provider.models.find((m) => m.id === modelId);
-  return model?.sizes ?? ["1024x1024"];
+    if (modelId === "dall-e-2") {
+      return ["256x256", "512x512", "1024x1024"];
+    }
+
+    if (modelId.startsWith("gpt-image-1")) {
+      return ["1024x1024", "1024x1536", "1536x1024", "auto"];
+    }
+  }
+
+  if (providerId === "automatic1111") {
+    return ["512x512", "768x768", "1024x1024", "1152x896", "896x1152"];
+  }
+
+  return ["1024x1024"];
 }

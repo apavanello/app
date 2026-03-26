@@ -93,6 +93,23 @@ function useModelEditorState() {
   return useReducer(modelEditorReducer, initialModelEditorState);
 }
 
+function getHardCappedScopes(
+  providerId?: string | null,
+): Pick<Model, "inputScopes" | "outputScopes"> | null {
+  if (providerId === "automatic1111") {
+    return {
+      inputScopes: ["text", "image"],
+      outputScopes: ["image"],
+    };
+  }
+
+  return null;
+}
+
+function isImageOnlyProvider(providerId?: string | null): boolean {
+  return providerId === "automatic1111";
+}
+
 export function useModelEditorController(): ControllerReturn {
   const { toModelsList, backOrReplace } = useNavigationManager();
   const { modelId } = useParams<{ modelId: string }>();
@@ -181,9 +198,19 @@ export function useModelEditorController(): ControllerReturn {
             providerId: selectedProvider?.providerId || firstCap?.id || "",
             providerLabel: selectedProvider?.label || firstCap?.name || "",
             createdAt: Date.now(),
-            inputScopes: hfMmprojPath ? ["text", "image"] : ["text"],
-            outputScopes: ["text"],
+            inputScopes:
+              hfMmprojPath || isImageOnlyProvider(selectedProvider?.providerId)
+                ? ["text", "image"]
+                : ["text"],
+            outputScopes: isImageOnlyProvider(selectedProvider?.providerId) ? ["image"] : ["text"],
           } as Model;
+          const hardCappedScopes = getHardCappedScopes(selectedProvider?.providerId);
+          if (hardCappedScopes) {
+            nextEditorModel = {
+              ...nextEditorModel,
+              ...hardCappedScopes,
+            };
+          }
           if (hfMmprojPath) {
             nextDraft = sanitizeAdvancedModelSettings({
               ...defaultAdvanced,
@@ -214,6 +241,16 @@ export function useModelEditorController(): ControllerReturn {
               ...nextEditorModel,
               providerId: fallback.providerId,
               providerLabel: fallback.label,
+            };
+          }
+        }
+
+        if (nextEditorModel) {
+          const hardCappedScopes = getHardCappedScopes(nextEditorModel.providerId);
+          if (hardCappedScopes) {
+            nextEditorModel = {
+              ...nextEditorModel,
+              ...hardCappedScopes,
             };
           }
         }
@@ -328,6 +365,13 @@ export function useModelEditorController(): ControllerReturn {
         payload: {
           providerId,
           providerLabel,
+          ...getHardCappedScopes(providerId),
+          ...(isImageOnlyProvider(providerId)
+            ? {
+                inputScopes: ["text", "image"],
+                outputScopes: ["image"],
+              }
+            : {}),
         },
       });
     },
@@ -1001,11 +1045,13 @@ export function useModelEditorController(): ControllerReturn {
 
       dispatch({ type: "set_saving", payload: true });
       try {
+        const hardCappedScopes = getHardCappedScopes(providerCred.providerId);
         await addOrUpdateModel({
           ...editorModel,
           providerId: providerCred.providerId,
           providerCredentialId: providerCred.id,
           providerLabel: providerCred.label,
+          ...hardCappedScopes,
           advancedModelSettings: sanitizeAdvancedModelSettings(modelAdvancedDraft),
         });
         if (navigate) {

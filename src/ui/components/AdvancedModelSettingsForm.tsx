@@ -11,6 +11,10 @@ export const ADVANCED_CONTEXT_LENGTH_RANGE = { min: 0, max: 262144 };
 export const ADVANCED_FREQUENCY_PENALTY_RANGE = { min: -2, max: 2 };
 export const ADVANCED_PRESENCE_PENALTY_RANGE = { min: -2, max: 2 };
 export const ADVANCED_TOP_K_RANGE = { min: 1, max: 500 };
+export const ADVANCED_SD_STEPS_RANGE = { min: 1, max: 150 };
+export const ADVANCED_SD_CFG_SCALE_RANGE = { min: 1, max: 30 };
+export const ADVANCED_SD_SEED_RANGE = { min: 0, max: 2_147_483_647 };
+export const ADVANCED_SD_DENOISING_STRENGTH_RANGE = { min: 0, max: 1 };
 export const ADVANCED_REASONING_BUDGET_RANGE = { min: 1024, max: 32768 };
 export const ADVANCED_LLAMA_GPU_LAYERS_RANGE = { min: 0, max: 512 };
 export const ADVANCED_LLAMA_THREADS_RANGE = { min: 1, max: 256 };
@@ -63,6 +67,13 @@ export function sanitizeAdvancedModelSettings(input: AdvancedModelSettings): Adv
     return cleaned.length > 0 ? cleaned : null;
   };
 
+  const normalizeSdSize = (value: unknown): string | null => {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim().toLowerCase().replace(/\s+/g, "");
+    if (!trimmed) return null;
+    return /^\d+x\d+$/.test(trimmed) ? trimmed : null;
+  };
+
   return {
     temperature: sanitize(input.temperature, ADVANCED_TEMPERATURE_RANGE, false),
     topP: sanitize(input.topP, ADVANCED_TOP_P_RANGE, false),
@@ -71,6 +82,17 @@ export function sanitizeAdvancedModelSettings(input: AdvancedModelSettings): Adv
     frequencyPenalty: sanitize(input.frequencyPenalty, ADVANCED_FREQUENCY_PENALTY_RANGE, false),
     presencePenalty: sanitize(input.presencePenalty, ADVANCED_PRESENCE_PENALTY_RANGE, false),
     topK: sanitize(input.topK, ADVANCED_TOP_K_RANGE, true),
+    sdSteps: sanitize(input.sdSteps, ADVANCED_SD_STEPS_RANGE, true),
+    sdCfgScale: sanitize(input.sdCfgScale, ADVANCED_SD_CFG_SCALE_RANGE, false),
+    sdSampler: input.sdSampler?.trim() || null,
+    sdSeed: sanitize(input.sdSeed, ADVANCED_SD_SEED_RANGE, true),
+    sdNegativePrompt: input.sdNegativePrompt?.trim() || null,
+    sdDenoisingStrength: sanitize(
+      input.sdDenoisingStrength,
+      ADVANCED_SD_DENOISING_STRENGTH_RANGE,
+      false,
+    ),
+    sdSize: normalizeSdSize(input.sdSize),
     llamaGpuLayers: sanitize(input.llamaGpuLayers, ADVANCED_LLAMA_GPU_LAYERS_RANGE, true),
     llamaThreads: sanitize(input.llamaThreads, ADVANCED_LLAMA_THREADS_RANGE, true),
     llamaThreadsBatch: sanitize(input.llamaThreadsBatch, ADVANCED_LLAMA_THREADS_BATCH_RANGE, true),
@@ -238,7 +260,9 @@ export function AdvancedModelSettingsForm({
             <label className="text-xs font-medium uppercase tracking-wider text-white/70">
               {t("components.advancedModelSettings.temperature")}
             </label>
-            <p className="mt-0.5 text-[11px] text-white/50">{t("components.advancedModelSettings.temperatureDesc")}</p>
+            <p className="mt-0.5 text-[11px] text-white/50">
+              {t("components.advancedModelSettings.temperatureDesc")}
+            </p>
           </div>
           <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-mono text-white/90">
             {settings.temperature?.toFixed(2) ?? "0.70"}
@@ -269,7 +293,9 @@ export function AdvancedModelSettingsForm({
             <label className="text-xs font-medium uppercase tracking-wider text-white/70">
               {t("components.advancedModelSettings.topP")}
             </label>
-            <p className="mt-0.5 text-[11px] text-white/50">{t("components.advancedModelSettings.topPDesc")}</p>
+            <p className="mt-0.5 text-[11px] text-white/50">
+              {t("components.advancedModelSettings.topPDesc")}
+            </p>
           </div>
           <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-mono text-white/90">
             {settings.topP?.toFixed(2) ?? "1.00"}
@@ -300,7 +326,9 @@ export function AdvancedModelSettingsForm({
             <label className="text-xs font-medium uppercase tracking-wider text-white/70">
               {t("components.advancedModelSettings.maxTokens")}
             </label>
-            <p className="mt-0.5 text-[11px] text-white/50">{t("components.advancedModelSettings.maxTokensDesc")}</p>
+            <p className="mt-0.5 text-[11px] text-white/50">
+              {t("components.advancedModelSettings.maxTokensDesc")}
+            </p>
           </div>
         </div>
         <input
@@ -322,10 +350,14 @@ export function AdvancedModelSettingsForm({
             <label className="text-xs font-medium uppercase tracking-wider text-white/70">
               {t("components.advancedModelSettings.contextLength")}
             </label>
-            <p className="mt-0.5 text-[11px] text-white/50">{t("components.advancedModelSettings.contextLengthDesc")}</p>
+            <p className="mt-0.5 text-[11px] text-white/50">
+              {t("components.advancedModelSettings.contextLengthDesc")}
+            </p>
           </div>
           <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-mono text-white/90">
-            {settings.contextLength ? settings.contextLength : t("components.advancedModelSettings.contextLengthAuto")}
+            {settings.contextLength
+              ? settings.contextLength
+              : t("components.advancedModelSettings.contextLengthAuto")}
           </span>
         </div>
         <input
@@ -361,7 +393,9 @@ export function AdvancedModelSettingsForm({
             <label className="text-xs font-medium uppercase tracking-wider text-white/70">
               {t("components.advancedModelSettings.frequencyPenalty")}
             </label>
-            <p className="mt-0.5 text-[11px] text-white/50">{t("components.advancedModelSettings.frequencyPenaltyDesc")}</p>
+            <p className="mt-0.5 text-[11px] text-white/50">
+              {t("components.advancedModelSettings.frequencyPenaltyDesc")}
+            </p>
           </div>
           <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-mono text-white/90">
             {settings.frequencyPenalty?.toFixed(2) ?? "0.00"}
@@ -392,7 +426,9 @@ export function AdvancedModelSettingsForm({
             <label className="text-xs font-medium uppercase tracking-wider text-white/70">
               {t("components.advancedModelSettings.presencePenalty")}
             </label>
-            <p className="mt-0.5 text-[11px] text-white/50">{t("components.advancedModelSettings.presencePenaltyDesc")}</p>
+            <p className="mt-0.5 text-[11px] text-white/50">
+              {t("components.advancedModelSettings.presencePenaltyDesc")}
+            </p>
           </div>
           <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs font-mono text-white/90">
             {settings.presencePenalty?.toFixed(2) ?? "0.00"}
@@ -423,7 +459,9 @@ export function AdvancedModelSettingsForm({
             <label className="text-xs font-medium uppercase tracking-wider text-white/70">
               {t("components.advancedModelSettings.topK")}
             </label>
-            <p className="mt-0.5 text-[11px] text-white/50">{t("components.advancedModelSettings.topKDesc")}</p>
+            <p className="mt-0.5 text-[11px] text-white/50">
+              {t("components.advancedModelSettings.topKDesc")}
+            </p>
           </div>
         </div>
         <input
@@ -444,7 +482,9 @@ export function AdvancedModelSettingsForm({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-white">
               <Brain className="h-4 w-4 text-amber-400" />
-              <h3 className="text-sm font-semibold">{t("components.advancedModelSettings.reasoning")}</h3>
+              <h3 className="text-sm font-semibold">
+                {t("components.advancedModelSettings.reasoning")}
+              </h3>
             </div>
 
             {!isAutoReasoning && (
@@ -533,10 +573,22 @@ export function AdvancedModelSettingsForm({
 
                           <div className="grid grid-cols-4 gap-2">
                             {[
-                              { value: null, label: t("components.advancedModelSettings.reasoningEffortAuto") },
-                              { value: "low" as const, label: t("components.advancedModelSettings.reasoningEffortLow") },
-                              { value: "medium" as const, label: t("components.advancedModelSettings.reasoningEffortMed") },
-                              { value: "high" as const, label: t("components.advancedModelSettings.reasoningEffortHigh") },
+                              {
+                                value: null,
+                                label: t("components.advancedModelSettings.reasoningEffortAuto"),
+                              },
+                              {
+                                value: "low" as const,
+                                label: t("components.advancedModelSettings.reasoningEffortLow"),
+                              },
+                              {
+                                value: "medium" as const,
+                                label: t("components.advancedModelSettings.reasoningEffortMed"),
+                              },
+                              {
+                                value: "high" as const,
+                                label: t("components.advancedModelSettings.reasoningEffortHigh"),
+                              },
                             ].map(({ value, label }) => (
                               <button
                                 key={label}
@@ -591,7 +643,9 @@ export function AdvancedModelSettingsForm({
                     <label className="text-xs font-medium uppercase tracking-wider text-amber-200/80">
                       {t("components.advancedModelSettings.reasoningEffort")}
                     </label>
-                    <p className="mt-0.5 text-[11px] text-white/50">{t("components.advancedModelSettings.reasoningEffortDesc")}</p>
+                    <p className="mt-0.5 text-[11px] text-white/50">
+                      {t("components.advancedModelSettings.reasoningEffortDesc")}
+                    </p>
                   </div>
 
                   <div className="grid grid-cols-4 gap-2">
@@ -615,20 +669,20 @@ export function AdvancedModelSettingsForm({
                         high: t("components.advancedModelSettings.reasoningEffortHigh"),
                       } as const;
                       return (
-                      <button
-                        key={effort}
-                        type="button"
-                        onClick={() => onChange({ ...settings, reasoningEffort: effort })}
-                        disabled={disabled}
-                        className={cn(
-                          "rounded-lg border px-3 py-2 text-xs font-medium transition-all active:scale-[0.98] disabled:opacity-50",
-                          settings.reasoningEffort === effort
-                            ? "border-amber-400/40 bg-amber-400/20 text-amber-100"
-                            : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white",
-                        )}
-                      >
-                        {effortLabels[effort]}
-                      </button>
+                        <button
+                          key={effort}
+                          type="button"
+                          onClick={() => onChange({ ...settings, reasoningEffort: effort })}
+                          disabled={disabled}
+                          className={cn(
+                            "rounded-lg border px-3 py-2 text-xs font-medium transition-all active:scale-[0.98] disabled:opacity-50",
+                            settings.reasoningEffort === effort
+                              ? "border-amber-400/40 bg-amber-400/20 text-amber-100"
+                              : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white",
+                          )}
+                        >
+                          {effortLabels[effort]}
+                        </button>
                       );
                     })}
                   </div>
@@ -639,7 +693,8 @@ export function AdvancedModelSettingsForm({
                       <p className="text-[10px] text-white/40">
                         {settings.reasoningEffort === "low" &&
                           t("components.advancedModelSettings.reasoningEffortLowDesc")}
-                        {settings.reasoningEffort === "medium" && t("components.advancedModelSettings.reasoningEffortMediumDesc")}
+                        {settings.reasoningEffort === "medium" &&
+                          t("components.advancedModelSettings.reasoningEffortMediumDesc")}
                         {settings.reasoningEffort === "high" &&
                           t("components.advancedModelSettings.reasoningEffortHighDesc")}
                       </p>

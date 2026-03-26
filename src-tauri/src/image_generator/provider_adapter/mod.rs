@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use super::types::ImageGenerationRequest;
 
+pub mod automatic1111;
 pub mod google_gemini;
 pub mod nanogpt;
 pub mod openai;
@@ -41,8 +42,31 @@ pub struct ImageResponseData {
     pub text: Option<String>,
 }
 
+pub fn parse_size_dimensions(
+    size: Option<&str>,
+    default_width: u32,
+    default_height: u32,
+) -> (u32, u32) {
+    let Some(size) = size else {
+        return (default_width, default_height);
+    };
+
+    let Some((width, height)) = size.split_once('x') else {
+        return (default_width, default_height);
+    };
+
+    let width = width.parse::<u32>().ok().filter(|value| *value > 0);
+    let height = height.parse::<u32>().ok().filter(|value| *value > 0);
+
+    match (width, height) {
+        (Some(width), Some(height)) => (width, height),
+        _ => (default_width, default_height),
+    }
+}
+
 pub fn get_adapter(provider_id: &str) -> Result<Box<dyn ImageProviderAdapter>, String> {
     match provider_id {
+        "automatic1111" => Ok(Box::new(automatic1111::Automatic1111Adapter)),
         "openai" => Ok(Box::new(openai::OpenAIAdapter)),
         "openrouter" => Ok(Box::new(openrouter::OpenRouterAdapter)),
         "gemini" => Ok(Box::new(google_gemini::GoogleGeminiAdapter)),

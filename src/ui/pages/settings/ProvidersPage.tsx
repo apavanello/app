@@ -79,7 +79,8 @@ export function ProvidersPage() {
 
   const isEngineProvider = !!editorProvider && editorProvider.providerId === "lettuce-engine";
   const isLocalProvider =
-    !!editorProvider && ["ollama", "lmstudio", "intenserp"].includes(editorProvider.providerId);
+    !!editorProvider &&
+    ["ollama", "lmstudio", "intenserp", "automatic1111"].includes(editorProvider.providerId);
   const isCustomProvider =
     !!editorProvider &&
     (editorProvider.providerId === "custom" || editorProvider.providerId === "custom-anthropic");
@@ -91,7 +92,15 @@ export function ProvidersPage() {
     | "header"
     | "query"
     | "none";
-  const showApiKeyInput = !(isCustomProvider && customAuthMode === "none") && !isEngineProvider;
+  const selectedCapability = editorProvider
+    ? capabilities.find((provider) => provider.id === editorProvider.providerId)
+    : null;
+  const providerRequiresApiKey = isCustomProvider
+    ? customAuthMode !== "none"
+    : selectedCapability
+      ? selectedCapability.requiredAuthHeaders.length > 0
+      : true;
+  const showApiKeyInput = providerRequiresApiKey && !isEngineProvider;
   const visibleCapabilities = isMobile
     ? capabilities.filter((provider) => provider.id !== "llamacpp")
     : capabilities;

@@ -484,12 +484,17 @@ fn build_scene_generation_request(
         model: model.name.clone(),
         provider_id: model.provider_id.clone(),
         credential_id: credential.id.clone(),
+        advanced_model_settings: model.advanced_model_settings.clone(),
         input_images: if input_images.is_empty() {
             None
         } else {
             Some(input_images)
         },
-        size: Some("1024x1024".to_string()),
+        size: model
+            .advanced_model_settings
+            .as_ref()
+            .and_then(|settings| settings.sd_size.clone())
+            .or_else(|| Some("1024x1024".to_string())),
         quality: None,
         style: None,
         n: Some(1),

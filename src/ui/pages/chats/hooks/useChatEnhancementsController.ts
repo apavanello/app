@@ -16,7 +16,12 @@ import {
 } from "../../../../core/image-generation";
 import type { GeneratedImage } from "../../../../core/image-generation";
 import { readSettings, SETTINGS_UPDATED_EVENT } from "../../../../core/storage/repo";
-import type { ImageAttachment, Session, StoredMessage } from "../../../../core/storage/schemas";
+import type {
+  AdvancedModelSettings,
+  ImageAttachment,
+  Session,
+  StoredMessage,
+} from "../../../../core/storage/schemas";
 import { isRenderableImageUrl } from "../../../../core/utils/image";
 import { toast } from "../../../components/toast";
 import type { ChatControllerModuleContext } from "./chatControllerShared";
@@ -27,6 +32,8 @@ interface ImageGenConfig {
   modelName: string;
   providerId: string;
   credentialId: string;
+  advancedModelSettings: AdvancedModelSettings | null;
+  defaultSize: string | null;
 }
 
 type SceneGenerationMode = "auto" | "askFirst" | "manual";
@@ -129,6 +136,8 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
       modelName: firstModel.name,
       providerId: firstModel.providerId,
       credentialId: provider.id,
+      advancedModelSettings: firstModel.advancedModelSettings ?? null,
+      defaultSize: firstModel.advancedModelSettings?.sdSize ?? null,
     };
     imageGenConfigRef.current = config;
     return config;
@@ -419,7 +428,8 @@ export function useChatEnhancementsController({ context }: UseChatEnhancementsCo
           model: config!.modelName,
           providerId: config!.providerId,
           credentialId: config!.credentialId,
-          size: directive.size ?? "1024x1024",
+          advancedModelSettings: config!.advancedModelSettings,
+          size: directive.size ?? config!.defaultSize ?? "1024x1024",
           n: count,
           quality: directive.quality,
           style: directive.style,

@@ -93,14 +93,18 @@ pub async fn generate_image(
         )?;
         provider_label = provider_cred.label.clone();
 
-        let api_key = provider_cred
-            .api_key
-            .ok_or_else(|| "API key not found for provider".to_string())?;
+        let adapter = get_adapter(&request.provider_id)?;
+
+        let api_key = if adapter.required_auth_headers().is_empty() {
+            provider_cred.api_key.unwrap_or_default()
+        } else {
+            provider_cred
+                .api_key
+                .ok_or_else(|| "API key not found for provider".to_string())?
+        };
 
         let base_url_opt = provider_cred.base_url.as_deref();
         let headers_map = provider_cred.headers;
-
-        let adapter = get_adapter(&request.provider_id)?;
 
         let base_url = resolve_base_url(&ProviderId(request.provider_id.clone()), base_url_opt);
 

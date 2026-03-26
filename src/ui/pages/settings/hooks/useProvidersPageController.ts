@@ -163,6 +163,7 @@ export function useProvidersPageController(): ControllerReturn {
         "ollama",
         "lmstudio",
         "intenserp",
+        "automatic1111",
       ].includes(editorProvider.providerId);
       const requiresVerification =
         !isLocalProvider &&
@@ -230,7 +231,7 @@ export function useProvidersPageController(): ControllerReturn {
         return;
       }
 
-      const requiresBaseUrl = ["ollama", "lmstudio", "intenserp"].includes(
+      const requiresBaseUrl = ["ollama", "lmstudio", "intenserp", "automatic1111"].includes(
         editorProvider.providerId,
       );
       if (requiresBaseUrl && !editorProvider.baseUrl?.trim()) {

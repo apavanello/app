@@ -271,7 +271,7 @@ fn default_context_enrichment() -> bool {
     true // v2 exclusive: Use last 2 messages for better retrieval
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AdvancedModelSettings {
     pub temperature: Option<f64>,
@@ -281,6 +281,20 @@ pub struct AdvancedModelSettings {
     pub frequency_penalty: Option<f64>,
     pub presence_penalty: Option<f64>,
     pub top_k: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sd_steps: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sd_cfg_scale: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sd_sampler: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sd_seed: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sd_negative_prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sd_denoising_strength: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sd_size: Option<String>,
     pub llama_gpu_layers: Option<u32>,
     pub llama_threads: Option<u32>,
     pub llama_threads_batch: Option<u32>,
@@ -340,6 +354,13 @@ impl Default for AdvancedModelSettings {
             frequency_penalty: None,
             presence_penalty: None,
             top_k: None,
+            sd_steps: None,
+            sd_cfg_scale: None,
+            sd_sampler: None,
+            sd_seed: None,
+            sd_negative_prompt: None,
+            sd_denoising_strength: None,
+            sd_size: None,
             llama_gpu_layers: None,
             llama_threads: None,
             llama_threads_batch: None,

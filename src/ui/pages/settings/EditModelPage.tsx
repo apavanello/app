@@ -11,6 +11,10 @@ import {
   ADVANCED_FREQUENCY_PENALTY_RANGE,
   ADVANCED_PRESENCE_PENALTY_RANGE,
   ADVANCED_TOP_K_RANGE,
+  ADVANCED_SD_CFG_SCALE_RANGE,
+  ADVANCED_SD_DENOISING_STRENGTH_RANGE,
+  ADVANCED_SD_SEED_RANGE,
+  ADVANCED_SD_STEPS_RANGE,
   ADVANCED_REASONING_BUDGET_RANGE,
   ADVANCED_LLAMA_GPU_LAYERS_RANGE,
   ADVANCED_LLAMA_THREADS_RANGE,
@@ -341,6 +345,7 @@ export function EditModelPage() {
     handleDisplayNameChange,
     handleModelNameChange,
     handleProviderSelection,
+    setModelAdvancedDraft,
     handleTemperatureChange,
     handleTopPChange,
     handleMaxTokensChange,
@@ -796,6 +801,7 @@ export function EditModelPage() {
     localLibraryPickerMode === "mmproj"
       ? "Download a multimodal projector from the Model Browser, or enter a path manually."
       : t("hfBrowser.libraryEmptyHint");
+  const isAutomatic1111Provider = editorModel?.providerId === "automatic1111";
 
   // Get reasoning support for the current provider
   const reasoningSupport: ReasoningSupport = editorModel?.providerId
@@ -866,18 +872,37 @@ export function EditModelPage() {
   const toggleSimplePanel = (panel: SimpleEditorSectionKey) => {
     setActiveSimplePanel((current) => (current === panel ? null : panel));
   };
-  const generationSummary =
-    [
-      modelAdvancedDraft.temperature != null
-        ? `Temp ${modelAdvancedDraft.temperature.toFixed(2)}`
-        : null,
-      modelAdvancedDraft.topP != null ? `Top P ${modelAdvancedDraft.topP.toFixed(2)}` : null,
-      modelAdvancedDraft.maxOutputTokens != null
-        ? `Max ${modelAdvancedDraft.maxOutputTokens.toLocaleString()}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join(" • ") || "Default sampling and output limits";
+  function updateSdSetting<K extends keyof typeof modelAdvancedDraft>(
+    key: K,
+    value: (typeof modelAdvancedDraft)[K],
+  ) {
+    setModelAdvancedDraft({
+      ...modelAdvancedDraft,
+      [key]: value,
+    });
+  }
+  const generationSummary = isAutomatic1111Provider
+    ? [
+        modelAdvancedDraft.sdSteps != null ? `Steps ${modelAdvancedDraft.sdSteps}` : null,
+        modelAdvancedDraft.sdCfgScale != null
+          ? `CFG ${modelAdvancedDraft.sdCfgScale.toFixed(1)}`
+          : null,
+        modelAdvancedDraft.sdSampler ? modelAdvancedDraft.sdSampler : null,
+        modelAdvancedDraft.sdSize ? modelAdvancedDraft.sdSize : null,
+      ]
+        .filter(Boolean)
+        .join(" • ") || "Stable Diffusion sampler, CFG, seed, and size defaults"
+    : [
+        modelAdvancedDraft.temperature != null
+          ? `Temp ${modelAdvancedDraft.temperature.toFixed(2)}`
+          : null,
+        modelAdvancedDraft.topP != null ? `Top P ${modelAdvancedDraft.topP.toFixed(2)}` : null,
+        modelAdvancedDraft.maxOutputTokens != null
+          ? `Max ${modelAdvancedDraft.maxOutputTokens.toLocaleString()}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" • ") || "Default sampling and output limits";
   const runtimeSummary = isLocalModel
     ? [
         modelAdvancedDraft.llamaBatchSize != null
@@ -1082,6 +1107,7 @@ export function EditModelPage() {
     enabled: boolean,
   ) => {
     if (!editorModel) return;
+    if (isAutomatic1111Provider) return;
     const current = new Set((editorModel as any)[key] ?? ["text"]);
     if (enabled) current.add(scope);
     else current.delete(scope);
@@ -1581,7 +1607,9 @@ export function EditModelPage() {
                       >
                         <div className="text-[13px] font-medium">Generation Parameters</div>
                         <div className="mt-1 text-[13px] text-fg/45">
-                          Temperature, sampling, penalties, and output limits.
+                          {isAutomatic1111Provider
+                            ? "Sampler, CFG, seed, negative prompt, denoise, and size defaults."
+                            : "Temperature, sampling, penalties, and output limits."}
                         </div>
                       </button>
 
@@ -1626,7 +1654,11 @@ export function EditModelPage() {
                       <div style={{ order: 10 }}>
                         <CollapsedEditorSectionButton
                           title="Generation Parameters"
-                          description="Temperature, sampling, penalties, and output limits."
+                          description={
+                            isAutomatic1111Provider
+                              ? "Sampler, CFG, seed, negative prompt, denoise, and size defaults."
+                              : "Temperature, sampling, penalties, and output limits."
+                          }
                           summary={generationSummary}
                           isOpen={activeSimplePanel === "generation"}
                           onClick={() => toggleSimplePanel("generation")}
@@ -1695,289 +1727,520 @@ export function EditModelPage() {
                               </button>
                             </div>
 
-                            <div className="grid grid-cols-1 gap-x-6 gap-y-8 md:grid-cols-2 xl:grid-cols-3 xl:gap-x-8">
-                              {/* Temperature */}
-                              <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <div className="space-y-0.5">
-                                      <span className="block text-[13px] font-medium text-fg/70">
-                                        Temperature
-                                      </span>
-                                      <span className="block text-[13px] text-fg/40">
-                                        Higher = more creative
-                                      </span>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => openDocs("models", "temperature")}
-                                      className="text-fg/30 hover:text-fg/60 transition"
-                                      aria-label="Help with temperature"
-                                    >
-                                      <HelpCircle size={12} />
-                                    </button>
-                                  </div>
-                                  <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
-                                    {modelAdvancedDraft.temperature?.toFixed(2) ?? "0.70"}
-                                  </span>
+                            {isAutomatic1111Provider ? (
+                              <div className="space-y-5">
+                                <div className="rounded-xl border border-accent/20 bg-accent/8 px-4 py-3 text-[13px] leading-relaxed text-fg/72">
+                                  AUTOMATIC1111 uses Stable Diffusion controls here. These values
+                                  become the default sampler settings for avatars, scene images, and
+                                  other local diffusion requests.
                                 </div>
-                                <input
-                                  type="number"
-                                  inputMode="decimal"
-                                  min={ADVANCED_TEMPERATURE_RANGE.min}
-                                  max={ADVANCED_TEMPERATURE_RANGE.max}
-                                  step={0.01}
-                                  value={modelAdvancedDraft.temperature ?? ""}
-                                  onChange={(e) => {
-                                    const raw = e.target.value;
-                                    handleTemperatureChange(raw === "" ? null : Number(raw));
-                                  }}
-                                  placeholder="0.70"
-                                  className={numberInputClassName}
-                                />
-                                <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
-                                  <span>{ADVANCED_TEMPERATURE_RANGE.min}</span>
-                                  <span>{ADVANCED_TEMPERATURE_RANGE.max}</span>
-                                </div>
-                              </div>
 
-                              {/* Top P */}
-                              <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <div className="space-y-0.5">
-                                      <span className="block text-[13px] font-medium text-fg/70">
-                                        Top P
-                                      </span>
-                                      <span className="block text-[13px] text-fg/40">
-                                        Lower = more focused
+                                <div className="grid grid-cols-1 gap-x-6 gap-y-8 md:grid-cols-2 xl:grid-cols-3 xl:gap-x-8">
+                                  <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          Steps
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Diffusion sampling steps
+                                        </span>
+                                      </div>
+                                      <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
+                                        {modelAdvancedDraft.sdSteps ?? "28"}
                                       </span>
                                     </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => openDocs("models", "top-p")}
-                                      className="text-fg/30 hover:text-fg/60 transition"
-                                      aria-label="Help with top p"
-                                    >
-                                      <HelpCircle size={12} />
-                                    </button>
+                                    <input
+                                      type="number"
+                                      inputMode="numeric"
+                                      min={ADVANCED_SD_STEPS_RANGE.min}
+                                      max={ADVANCED_SD_STEPS_RANGE.max}
+                                      step={1}
+                                      value={modelAdvancedDraft.sdSteps ?? ""}
+                                      onChange={(e) => {
+                                        const raw = e.target.value;
+                                        const next = raw === "" ? null : Number(raw);
+                                        updateSdSetting(
+                                          "sdSteps",
+                                          next === null || !Number.isFinite(next)
+                                            ? null
+                                            : Math.trunc(next),
+                                        );
+                                      }}
+                                      placeholder="28"
+                                      className={numberInputClassName}
+                                    />
+                                    <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
+                                      <span>{ADVANCED_SD_STEPS_RANGE.min}</span>
+                                      <span>{ADVANCED_SD_STEPS_RANGE.max}</span>
+                                    </div>
                                   </div>
-                                  <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
-                                    {modelAdvancedDraft.topP?.toFixed(2) ?? "1.00"}
-                                  </span>
-                                </div>
-                                <input
-                                  type="number"
-                                  inputMode="decimal"
-                                  min={ADVANCED_TOP_P_RANGE.min}
-                                  max={ADVANCED_TOP_P_RANGE.max}
-                                  step={0.01}
-                                  value={modelAdvancedDraft.topP ?? ""}
-                                  onChange={(e) => {
-                                    const raw = e.target.value;
-                                    handleTopPChange(raw === "" ? null : Number(raw));
-                                  }}
-                                  placeholder="1.00"
-                                  className={numberInputClassName}
-                                />
-                                <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
-                                  <span>{ADVANCED_TOP_P_RANGE.min}</span>
-                                  <span>{ADVANCED_TOP_P_RANGE.max}</span>
-                                </div>
-                              </div>
 
-                              {/* Max Tokens */}
-                              <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <div className="space-y-0.5">
-                                      <span className="block text-[13px] font-medium text-fg/70">
-                                        Max Output Tokens
-                                      </span>
-                                      <span className="block text-[13px] text-fg/40">
-                                        Limit response length
+                                  <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          CFG Scale
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Prompt guidance strength
+                                        </span>
+                                      </div>
+                                      <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
+                                        {modelAdvancedDraft.sdCfgScale?.toFixed(1) ?? "6.5"}
                                       </span>
                                     </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => openDocs("models", "max-output-tokens")}
-                                      className="text-fg/30 hover:text-fg/60 transition"
-                                      aria-label="Help with max output tokens"
-                                    >
-                                      <HelpCircle size={12} />
-                                    </button>
+                                    <input
+                                      type="number"
+                                      inputMode="decimal"
+                                      min={ADVANCED_SD_CFG_SCALE_RANGE.min}
+                                      max={ADVANCED_SD_CFG_SCALE_RANGE.max}
+                                      step={0.1}
+                                      value={modelAdvancedDraft.sdCfgScale ?? ""}
+                                      onChange={(e) => {
+                                        const raw = e.target.value;
+                                        updateSdSetting(
+                                          "sdCfgScale",
+                                          raw === "" ? null : Number(raw),
+                                        );
+                                      }}
+                                      placeholder="6.5"
+                                      className={numberInputClassName}
+                                    />
+                                    <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
+                                      <span>{ADVANCED_SD_CFG_SCALE_RANGE.min}</span>
+                                      <span>{ADVANCED_SD_CFG_SCALE_RANGE.max}</span>
+                                    </div>
                                   </div>
-                                  <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
-                                    {modelAdvancedDraft.maxOutputTokens
-                                      ? modelAdvancedDraft.maxOutputTokens.toLocaleString()
-                                      : "Auto"}
-                                  </span>
-                                </div>
-                                <input
-                                  type="number"
-                                  inputMode="numeric"
-                                  min={ADVANCED_MAX_TOKENS_RANGE.min}
-                                  max={ADVANCED_MAX_TOKENS_RANGE.max}
-                                  step={1}
-                                  value={modelAdvancedDraft.maxOutputTokens || ""}
-                                  onChange={(e) => {
-                                    const raw = e.target.value;
-                                    const next = raw === "" ? null : Number(raw);
-                                    handleMaxTokensChange(
-                                      next === null || !Number.isFinite(next) || next === 0
-                                        ? null
-                                        : Math.trunc(next),
-                                    );
-                                  }}
-                                  placeholder="Auto"
-                                  className={numberInputClassName}
-                                />
-                                <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
-                                  <span>Auto</span>
-                                  <span>{ADVANCED_MAX_TOKENS_RANGE.max.toLocaleString()}</span>
-                                </div>
-                              </div>
 
-                              {/* Top K */}
-                              <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <div className="space-y-0.5">
-                                      <span className="block text-[13px] font-medium text-fg/70">
-                                        Top K
-                                      </span>
-                                      <span className="block text-[13px] text-fg/40">
-                                        Sample from top K tokens
+                                  <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          Default Size
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Used when the request does not override size
+                                        </span>
+                                      </div>
+                                      <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
+                                        {modelAdvancedDraft.sdSize ?? "1024x1024"}
                                       </span>
                                     </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => openDocs("models", "top-k-if-supported")}
-                                      className="text-fg/30 hover:text-fg/60 transition"
-                                      aria-label="Help with top k"
-                                    >
-                                      <HelpCircle size={12} />
-                                    </button>
+                                    <input
+                                      type="text"
+                                      value={modelAdvancedDraft.sdSize ?? ""}
+                                      onChange={(e) => updateSdSetting("sdSize", e.target.value)}
+                                      placeholder="1024x1024"
+                                      className={numberInputClassName}
+                                    />
+                                    <div className="text-[13px] text-fg/30 px-0.5 mt-1">
+                                      Format: width x height
+                                    </div>
                                   </div>
-                                  <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
-                                    {modelAdvancedDraft.topK ? modelAdvancedDraft.topK : "Auto"}
-                                  </span>
-                                </div>
-                                <input
-                                  type="number"
-                                  inputMode="numeric"
-                                  min={ADVANCED_TOP_K_RANGE.min}
-                                  max={ADVANCED_TOP_K_RANGE.max}
-                                  step={1}
-                                  value={modelAdvancedDraft.topK || ""}
-                                  onChange={(e) => {
-                                    const raw = e.target.value;
-                                    const next = raw === "" ? null : Number(raw);
-                                    handleTopKChange(
-                                      next === null || !Number.isFinite(next) || next === 0
-                                        ? null
-                                        : Math.trunc(next),
-                                    );
-                                  }}
-                                  placeholder="Auto"
-                                  className={numberInputClassName}
-                                />
-                                <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
-                                  <span>Auto</span>
-                                  <span>{ADVANCED_TOP_K_RANGE.max}</span>
-                                </div>
-                              </div>
 
-                              {/* Penalties - Frequency */}
-                              <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
+                                  <div className="space-y-4">
                                     <div className="space-y-0.5">
                                       <span className="block text-[13px] font-medium text-fg/70">
-                                        Frequency Penalty
+                                        Sampler
                                       </span>
                                       <span className="block text-[13px] text-fg/40">
-                                        Reduce word repetition
+                                        Sampler name sent to A1111
                                       </span>
                                     </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => openDocs("models", "frequency-penalty")}
-                                      className="text-fg/30 hover:text-fg/60 transition"
-                                      aria-label="Help with frequency penalty"
-                                    >
-                                      <HelpCircle size={12} />
-                                    </button>
+                                    <input
+                                      type="text"
+                                      value={modelAdvancedDraft.sdSampler ?? ""}
+                                      onChange={(e) => updateSdSetting("sdSampler", e.target.value)}
+                                      placeholder="DPM++ 2M Karras"
+                                      className={selectInputClassName}
+                                    />
                                   </div>
-                                  <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
-                                    {modelAdvancedDraft.frequencyPenalty?.toFixed(2) ?? "0.00"}
-                                  </span>
-                                </div>
-                                <input
-                                  type="number"
-                                  inputMode="decimal"
-                                  min={ADVANCED_FREQUENCY_PENALTY_RANGE.min}
-                                  max={ADVANCED_FREQUENCY_PENALTY_RANGE.max}
-                                  step={0.01}
-                                  value={modelAdvancedDraft.frequencyPenalty ?? ""}
-                                  onChange={(e) => {
-                                    const raw = e.target.value;
-                                    handleFrequencyPenaltyChange(raw === "" ? null : Number(raw));
-                                  }}
-                                  placeholder="0.00"
-                                  className={numberInputClassName}
-                                />
-                                <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
-                                  <span>{ADVANCED_FREQUENCY_PENALTY_RANGE.min}</span>
-                                  <span>{ADVANCED_FREQUENCY_PENALTY_RANGE.max}</span>
-                                </div>
-                              </div>
 
-                              {/* Penalties - Presence */}
-                              <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <div className="space-y-0.5">
-                                      <span className="block text-[13px] font-medium text-fg/70">
-                                        Presence Penalty
-                                      </span>
-                                      <span className="block text-[13px] text-fg/40">
-                                        Encourage new topics
+                                  <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          Seed
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Leave blank for random generations
+                                        </span>
+                                      </div>
+                                      <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
+                                        {modelAdvancedDraft.sdSeed ?? "Random"}
                                       </span>
                                     </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => openDocs("models", "presence-penalty")}
-                                      className="text-fg/30 hover:text-fg/60 transition"
-                                      aria-label="Help with presence penalty"
-                                    >
-                                      <HelpCircle size={12} />
-                                    </button>
+                                    <input
+                                      type="number"
+                                      inputMode="numeric"
+                                      min={ADVANCED_SD_SEED_RANGE.min}
+                                      max={ADVANCED_SD_SEED_RANGE.max}
+                                      step={1}
+                                      value={modelAdvancedDraft.sdSeed ?? ""}
+                                      onChange={(e) => {
+                                        const raw = e.target.value;
+                                        const next = raw === "" ? null : Number(raw);
+                                        updateSdSetting(
+                                          "sdSeed",
+                                          next === null || !Number.isFinite(next)
+                                            ? null
+                                            : Math.trunc(next),
+                                        );
+                                      }}
+                                      placeholder="Random"
+                                      className={numberInputClassName}
+                                    />
+                                    <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
+                                      <span>Random</span>
+                                      <span>{ADVANCED_SD_SEED_RANGE.max.toLocaleString()}</span>
+                                    </div>
                                   </div>
-                                  <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
-                                    {modelAdvancedDraft.presencePenalty?.toFixed(2) ?? "0.00"}
-                                  </span>
+
+                                  <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          Img2img Denoise
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Edit strength for reference-based generations
+                                        </span>
+                                      </div>
+                                      <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
+                                        {modelAdvancedDraft.sdDenoisingStrength?.toFixed(2) ??
+                                          "0.75"}
+                                      </span>
+                                    </div>
+                                    <input
+                                      type="number"
+                                      inputMode="decimal"
+                                      min={ADVANCED_SD_DENOISING_STRENGTH_RANGE.min}
+                                      max={ADVANCED_SD_DENOISING_STRENGTH_RANGE.max}
+                                      step={0.01}
+                                      value={modelAdvancedDraft.sdDenoisingStrength ?? ""}
+                                      onChange={(e) => {
+                                        const raw = e.target.value;
+                                        updateSdSetting(
+                                          "sdDenoisingStrength",
+                                          raw === "" ? null : Number(raw),
+                                        );
+                                      }}
+                                      placeholder="0.75"
+                                      className={numberInputClassName}
+                                    />
+                                    <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
+                                      <span>{ADVANCED_SD_DENOISING_STRENGTH_RANGE.min}</span>
+                                      <span>{ADVANCED_SD_DENOISING_STRENGTH_RANGE.max}</span>
+                                    </div>
+                                  </div>
                                 </div>
-                                <input
-                                  type="number"
-                                  inputMode="decimal"
-                                  min={ADVANCED_PRESENCE_PENALTY_RANGE.min}
-                                  max={ADVANCED_PRESENCE_PENALTY_RANGE.max}
-                                  step={0.01}
-                                  value={modelAdvancedDraft.presencePenalty ?? ""}
-                                  onChange={(e) => {
-                                    const raw = e.target.value;
-                                    handlePresencePenaltyChange(raw === "" ? null : Number(raw));
-                                  }}
-                                  placeholder="0.00"
-                                  className={numberInputClassName}
-                                />
-                                <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
-                                  <span>{ADVANCED_PRESENCE_PENALTY_RANGE.min}</span>
-                                  <span>{ADVANCED_PRESENCE_PENALTY_RANGE.max}</span>
+
+                                <div className="space-y-4">
+                                  <div className="space-y-0.5">
+                                    <span className="block text-[13px] font-medium text-fg/70">
+                                      Negative Prompt
+                                    </span>
+                                    <span className="block text-[13px] text-fg/40">
+                                      Applied to every AUTOMATIC1111 request for this model
+                                    </span>
+                                  </div>
+                                  <textarea
+                                    value={modelAdvancedDraft.sdNegativePrompt ?? ""}
+                                    onChange={(e) =>
+                                      updateSdSetting("sdNegativePrompt", e.target.value)
+                                    }
+                                    placeholder="blurry, low quality, bad anatomy, extra fingers"
+                                    rows={4}
+                                    className={textAreaInputClassName}
+                                  />
                                 </div>
                               </div>
-                            </div>
+                            ) : (
+                              <div className="grid grid-cols-1 gap-x-6 gap-y-8 md:grid-cols-2 xl:grid-cols-3 xl:gap-x-8">
+                                {/* Temperature */}
+                                <div className="space-y-4">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          Temperature
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Higher = more creative
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => openDocs("models", "temperature")}
+                                        className="text-fg/30 hover:text-fg/60 transition"
+                                        aria-label="Help with temperature"
+                                      >
+                                        <HelpCircle size={12} />
+                                      </button>
+                                    </div>
+                                    <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
+                                      {modelAdvancedDraft.temperature?.toFixed(2) ?? "0.70"}
+                                    </span>
+                                  </div>
+                                  <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    min={ADVANCED_TEMPERATURE_RANGE.min}
+                                    max={ADVANCED_TEMPERATURE_RANGE.max}
+                                    step={0.01}
+                                    value={modelAdvancedDraft.temperature ?? ""}
+                                    onChange={(e) => {
+                                      const raw = e.target.value;
+                                      handleTemperatureChange(raw === "" ? null : Number(raw));
+                                    }}
+                                    placeholder="0.70"
+                                    className={numberInputClassName}
+                                  />
+                                  <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
+                                    <span>{ADVANCED_TEMPERATURE_RANGE.min}</span>
+                                    <span>{ADVANCED_TEMPERATURE_RANGE.max}</span>
+                                  </div>
+                                </div>
+
+                                {/* Top P */}
+                                <div className="space-y-4">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          Top P
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Lower = more focused
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => openDocs("models", "top-p")}
+                                        className="text-fg/30 hover:text-fg/60 transition"
+                                        aria-label="Help with top p"
+                                      >
+                                        <HelpCircle size={12} />
+                                      </button>
+                                    </div>
+                                    <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
+                                      {modelAdvancedDraft.topP?.toFixed(2) ?? "1.00"}
+                                    </span>
+                                  </div>
+                                  <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    min={ADVANCED_TOP_P_RANGE.min}
+                                    max={ADVANCED_TOP_P_RANGE.max}
+                                    step={0.01}
+                                    value={modelAdvancedDraft.topP ?? ""}
+                                    onChange={(e) => {
+                                      const raw = e.target.value;
+                                      handleTopPChange(raw === "" ? null : Number(raw));
+                                    }}
+                                    placeholder="1.00"
+                                    className={numberInputClassName}
+                                  />
+                                  <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
+                                    <span>{ADVANCED_TOP_P_RANGE.min}</span>
+                                    <span>{ADVANCED_TOP_P_RANGE.max}</span>
+                                  </div>
+                                </div>
+
+                                {/* Max Tokens */}
+                                <div className="space-y-4">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          Max Output Tokens
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Limit response length
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => openDocs("models", "max-output-tokens")}
+                                        className="text-fg/30 hover:text-fg/60 transition"
+                                        aria-label="Help with max output tokens"
+                                      >
+                                        <HelpCircle size={12} />
+                                      </button>
+                                    </div>
+                                    <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
+                                      {modelAdvancedDraft.maxOutputTokens
+                                        ? modelAdvancedDraft.maxOutputTokens.toLocaleString()
+                                        : "Auto"}
+                                    </span>
+                                  </div>
+                                  <input
+                                    type="number"
+                                    inputMode="numeric"
+                                    min={ADVANCED_MAX_TOKENS_RANGE.min}
+                                    max={ADVANCED_MAX_TOKENS_RANGE.max}
+                                    step={1}
+                                    value={modelAdvancedDraft.maxOutputTokens || ""}
+                                    onChange={(e) => {
+                                      const raw = e.target.value;
+                                      const next = raw === "" ? null : Number(raw);
+                                      handleMaxTokensChange(
+                                        next === null || !Number.isFinite(next) || next === 0
+                                          ? null
+                                          : Math.trunc(next),
+                                      );
+                                    }}
+                                    placeholder="Auto"
+                                    className={numberInputClassName}
+                                  />
+                                  <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
+                                    <span>Auto</span>
+                                    <span>{ADVANCED_MAX_TOKENS_RANGE.max.toLocaleString()}</span>
+                                  </div>
+                                </div>
+
+                                {/* Top K */}
+                                <div className="space-y-4">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          Top K
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Sample from top K tokens
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => openDocs("models", "top-k-if-supported")}
+                                        className="text-fg/30 hover:text-fg/60 transition"
+                                        aria-label="Help with top k"
+                                      >
+                                        <HelpCircle size={12} />
+                                      </button>
+                                    </div>
+                                    <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
+                                      {modelAdvancedDraft.topK ? modelAdvancedDraft.topK : "Auto"}
+                                    </span>
+                                  </div>
+                                  <input
+                                    type="number"
+                                    inputMode="numeric"
+                                    min={ADVANCED_TOP_K_RANGE.min}
+                                    max={ADVANCED_TOP_K_RANGE.max}
+                                    step={1}
+                                    value={modelAdvancedDraft.topK || ""}
+                                    onChange={(e) => {
+                                      const raw = e.target.value;
+                                      const next = raw === "" ? null : Number(raw);
+                                      handleTopKChange(
+                                        next === null || !Number.isFinite(next) || next === 0
+                                          ? null
+                                          : Math.trunc(next),
+                                      );
+                                    }}
+                                    placeholder="Auto"
+                                    className={numberInputClassName}
+                                  />
+                                  <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
+                                    <span>Auto</span>
+                                    <span>{ADVANCED_TOP_K_RANGE.max}</span>
+                                  </div>
+                                </div>
+
+                                {/* Penalties - Frequency */}
+                                <div className="space-y-4">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          Frequency Penalty
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Reduce word repetition
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => openDocs("models", "frequency-penalty")}
+                                        className="text-fg/30 hover:text-fg/60 transition"
+                                        aria-label="Help with frequency penalty"
+                                      >
+                                        <HelpCircle size={12} />
+                                      </button>
+                                    </div>
+                                    <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
+                                      {modelAdvancedDraft.frequencyPenalty?.toFixed(2) ?? "0.00"}
+                                    </span>
+                                  </div>
+                                  <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    min={ADVANCED_FREQUENCY_PENALTY_RANGE.min}
+                                    max={ADVANCED_FREQUENCY_PENALTY_RANGE.max}
+                                    step={0.01}
+                                    value={modelAdvancedDraft.frequencyPenalty ?? ""}
+                                    onChange={(e) => {
+                                      const raw = e.target.value;
+                                      handleFrequencyPenaltyChange(raw === "" ? null : Number(raw));
+                                    }}
+                                    placeholder="0.00"
+                                    className={numberInputClassName}
+                                  />
+                                  <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
+                                    <span>{ADVANCED_FREQUENCY_PENALTY_RANGE.min}</span>
+                                    <span>{ADVANCED_FREQUENCY_PENALTY_RANGE.max}</span>
+                                  </div>
+                                </div>
+
+                                {/* Penalties - Presence */}
+                                <div className="space-y-4">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <div className="space-y-0.5">
+                                        <span className="block text-[13px] font-medium text-fg/70">
+                                          Presence Penalty
+                                        </span>
+                                        <span className="block text-[13px] text-fg/40">
+                                          Encourage new topics
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => openDocs("models", "presence-penalty")}
+                                        className="text-fg/30 hover:text-fg/60 transition"
+                                        aria-label="Help with presence penalty"
+                                      >
+                                        <HelpCircle size={12} />
+                                      </button>
+                                    </div>
+                                    <span className="rounded-lg bg-surface-el/30 px-2 py-1 font-mono text-[13px] text-accent">
+                                      {modelAdvancedDraft.presencePenalty?.toFixed(2) ?? "0.00"}
+                                    </span>
+                                  </div>
+                                  <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    min={ADVANCED_PRESENCE_PENALTY_RANGE.min}
+                                    max={ADVANCED_PRESENCE_PENALTY_RANGE.max}
+                                    step={0.01}
+                                    value={modelAdvancedDraft.presencePenalty ?? ""}
+                                    onChange={(e) => {
+                                      const raw = e.target.value;
+                                      handlePresencePenaltyChange(raw === "" ? null : Number(raw));
+                                    }}
+                                    placeholder="0.00"
+                                    className={numberInputClassName}
+                                  />
+                                  <div className="flex justify-between text-[13px] text-fg/30 px-0.5 mt-1">
+                                    <span>{ADVANCED_PRESENCE_PENALTY_RANGE.min}</span>
+                                    <span>{ADVANCED_PRESENCE_PENALTY_RANGE.max}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -3411,6 +3674,7 @@ export function EditModelPage() {
                                   <button
                                     key={scope}
                                     type="button"
+                                    disabled={isAutomatic1111Provider}
                                     onClick={() =>
                                       toggleScope(
                                         "inputScopes",
@@ -3420,6 +3684,7 @@ export function EditModelPage() {
                                     }
                                     className={cn(
                                       "flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-[13px] transition",
+                                      isAutomatic1111Provider && "cursor-not-allowed opacity-60",
                                       editorModel.inputScopes?.includes(scope as any)
                                         ? "border-accent/25 bg-accent/10 text-accent"
                                         : "border-fg/10 bg-fg/5 text-fg/55 hover:border-fg/20 hover:bg-fg/8 hover:text-fg/85",
@@ -3439,6 +3704,7 @@ export function EditModelPage() {
                                   <button
                                     key={scope}
                                     type="button"
+                                    disabled={isAutomatic1111Provider}
                                     onClick={() =>
                                       toggleScope(
                                         "outputScopes",
@@ -3448,6 +3714,7 @@ export function EditModelPage() {
                                     }
                                     className={cn(
                                       "flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-[13px] transition",
+                                      isAutomatic1111Provider && "cursor-not-allowed opacity-60",
                                       editorModel.outputScopes?.includes(scope as any)
                                         ? "border-accent/25 bg-accent/10 text-accent"
                                         : "border-fg/10 bg-fg/5 text-fg/55 hover:border-fg/20 hover:bg-fg/8 hover:text-fg/85",
@@ -3461,6 +3728,12 @@ export function EditModelPage() {
                                 ))}
                               </div>
                             </div>
+                            {isAutomatic1111Provider && (
+                              <p className="text-[12px] leading-relaxed text-fg/45">
+                                AUTOMATIC1111 models are fixed to text + image input and image
+                                output.
+                              </p>
+                            )}
                           </div>
                         )}
                       </div>
@@ -3534,6 +3807,7 @@ export function EditModelPage() {
                           <button
                             key={scope}
                             type="button"
+                            disabled={isAutomatic1111Provider}
                             onClick={() =>
                               toggleScope(
                                 "inputScopes",
@@ -3543,6 +3817,7 @@ export function EditModelPage() {
                             }
                             className={cn(
                               "flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-[13px] transition",
+                              isAutomatic1111Provider && "cursor-not-allowed opacity-60",
                               editorModel.inputScopes?.includes(scope as any)
                                 ? "border-accent/25 bg-accent/10 text-accent"
                                 : "border-fg/10 bg-fg/5 text-fg/55 hover:border-fg/20 hover:bg-fg/8 hover:text-fg/85",
@@ -3562,6 +3837,7 @@ export function EditModelPage() {
                           <button
                             key={scope}
                             type="button"
+                            disabled={isAutomatic1111Provider}
                             onClick={() =>
                               toggleScope(
                                 "outputScopes",
@@ -3571,6 +3847,7 @@ export function EditModelPage() {
                             }
                             className={cn(
                               "flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-[13px] transition",
+                              isAutomatic1111Provider && "cursor-not-allowed opacity-60",
                               editorModel.outputScopes?.includes(scope as any)
                                 ? "border-accent/25 bg-accent/10 text-accent"
                                 : "border-fg/10 bg-fg/5 text-fg/55 hover:border-fg/20 hover:bg-fg/8 hover:text-fg/85",
@@ -3584,6 +3861,11 @@ export function EditModelPage() {
                         ))}
                       </div>
                     </div>
+                    {isAutomatic1111Provider && (
+                      <p className="mt-4 text-[12px] leading-relaxed text-fg/45">
+                        AUTOMATIC1111 models are fixed to text + image input and image output.
+                      </p>
+                    )}
                   </EditorPanel>
 
                   {(shouldShowMoveReminder ||

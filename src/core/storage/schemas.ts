@@ -66,6 +66,14 @@ export const AdvancedModelSettingsSchema = z.object({
   frequencyPenalty: z.number().min(-2).max(2).nullable().optional(),
   presencePenalty: z.number().min(-2).max(2).nullable().optional(),
   topK: z.number().int().min(1).max(500).nullable().optional(),
+  // Stable Diffusion / AUTOMATIC1111 specific settings
+  sdSteps: z.number().int().min(1).max(150).nullable().optional(),
+  sdCfgScale: z.number().min(1).max(30).nullable().optional(),
+  sdSampler: z.string().trim().min(1).nullable().optional(),
+  sdSeed: z.number().int().min(0).max(2_147_483_647).nullable().optional(),
+  sdNegativePrompt: z.string().trim().min(1).nullable().optional(),
+  sdDenoisingStrength: z.number().min(0).max(1).nullable().optional(),
+  sdSize: z.string().trim().min(3).nullable().optional(),
   // llama.cpp specific settings
   llamaGpuLayers: z.number().int().min(0).max(512).nullable().optional(),
   llamaThreads: z.number().int().min(1).max(256).nullable().optional(),
@@ -366,6 +374,20 @@ export function getOpenRouterModelReasoningCapability(
  * Documents which advanced parameters are supported by each LLM provider
  */
 export const PROVIDER_PARAMETER_SUPPORT = {
+  automatic1111: {
+    providerId: "automatic1111",
+    displayName: "AUTOMATIC1111",
+    reasoningSupport: "none" as ReasoningSupport,
+    supportedParameters: {
+      sdSteps: true,
+      sdCfgScale: true,
+      sdSampler: true,
+      sdSeed: true,
+      sdNegativePrompt: true,
+      sdDenoisingStrength: true,
+      sdSize: true,
+    },
+  },
   chutes: {
     providerId: "chutes",
     displayName: "Chutes",
@@ -1514,7 +1536,11 @@ export function providerSupportsParameter(
     (providerId === "z.ai" ? PROVIDER_PARAMETER_SUPPORT.zai : null);
 
   if (!provider) return false;
-  return provider.supportedParameters[parameter] ?? false;
+  return (
+    (provider.supportedParameters as Partial<Record<keyof AdvancedModelSettings, boolean>>)[
+      parameter
+    ] ?? false
+  );
 }
 
 /**
@@ -1540,8 +1566,11 @@ export function getProviderReasoningSupport(providerId: string): ReasoningSuppor
 export function getSupportedParameters(providerId: string): (keyof AdvancedModelSettings)[] {
   const provider = PROVIDER_PARAMETER_SUPPORT[providerId as ProviderId];
   if (!provider) return ["temperature", "topP", "maxOutputTokens"];
+  const supportedParameters = provider.supportedParameters as Partial<
+    Record<keyof AdvancedModelSettings, boolean>
+  >;
 
-  return Object.entries(provider.supportedParameters)
+  return Object.entries(supportedParameters)
     .filter(([_, supported]) => supported)
     .map(([param]) => param as keyof AdvancedModelSettings);
 }
@@ -2311,5 +2340,12 @@ export type Persona = z.infer<typeof PersonaSchema>;
 export function createDefaultAdvancedModelSettings(): AdvancedModelSettings {
   return {
     maxOutputTokens: 2048,
+    sdSteps: null,
+    sdCfgScale: null,
+    sdSampler: null,
+    sdSeed: null,
+    sdNegativePrompt: null,
+    sdDenoisingStrength: null,
+    sdSize: null,
   };
 }
