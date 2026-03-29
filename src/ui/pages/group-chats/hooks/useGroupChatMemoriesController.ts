@@ -435,8 +435,22 @@ export function useGroupChatMemoriesController(groupSessionId?: string) {
   const handleAbortMemoryCycle = useCallback(async () => {
     if (!session?.id) return;
     try {
-      await storageBridge.groupChatAbortDynamicMemory(session.id);
+      if (session.memoryStatus === "processing") {
+        await storageBridge.groupChatAbortDynamicMemory(session.id);
+      }
+      await storageBridge.groupSessionUpdateMemories(
+        session.id,
+        session.memoryEmbeddings ?? [],
+        session.memorySummary ?? "",
+        session.memorySummaryTokenCount ?? 0,
+        "idle",
+        null,
+      );
+      setSession({ ...session, memoryStatus: "idle", memoryError: null });
       dispatch({ type: "SET_ACTION_ERROR", value: null });
+      dispatch({ type: "SET_RETRY_STATUS", value: "idle" });
+      dispatch({ type: "SET_MEMORY_STATUS", value: "idle" });
+      await reload();
     } catch (err: any) {
       if (!isAbortError(err)) {
         console.error("Failed to abort memory processing:", err);
@@ -445,7 +459,7 @@ export function useGroupChatMemoriesController(groupSessionId?: string) {
       dispatch({ type: "SET_MEMORY_STATUS", value: "idle" });
       void reload();
     }
-  }, [session?.id, reload]);
+  }, [reload, session, setSession]);
 
   const handleRefresh = useCallback(async () => {
     if (!session?.id) return;

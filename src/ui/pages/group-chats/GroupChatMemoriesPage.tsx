@@ -675,9 +675,7 @@ export function GroupChatMemoriesPage() {
                 </span>
                 <button
                   onClick={
-                    ui.retryStatus === "retrying" || session.memoryStatus === "processing"
-                      ? handleAbortMemoryCycle
-                      : handleRunMemoryCycle
+                    session.memoryStatus !== "idle" ? handleAbortMemoryCycle : handleRunMemoryCycle
                   }
                   className={cn(
                     "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg",
@@ -687,14 +685,12 @@ export function GroupChatMemoriesPage() {
                     "transition-all active:scale-95",
                   )}
                 >
-                  {ui.retryStatus === "retrying" || session.memoryStatus === "processing" ? (
+                  {session.memoryStatus !== "idle" ? (
                     <X size={12} className="animate-pulse" />
                   ) : (
                     <Cpu size={12} />
                   )}
-                  {ui.retryStatus === "retrying" || session.memoryStatus === "processing"
-                    ? t("common.buttons.cancel")
-                    : "Run"}
+                  {session.memoryStatus !== "idle" ? t("common.buttons.cancel") : "Run"}
                 </button>
               </div>
               <ToolLog events={session.memoryToolEvents || []} />

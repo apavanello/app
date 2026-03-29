@@ -1182,10 +1182,16 @@ export function ChatMemoriesPage() {
   }, [sessionId, isDynamic, reload]);
 
   const handleAbortMemoryCycle = useCallback(async () => {
-    if (!sessionId || !isDynamic) return;
+    if (!sessionId || !isDynamic || !session) return;
     try {
-      await storageBridge.abortDynamicMemory(sessionId);
+      if (session.memoryStatus === "processing") {
+        await storageBridge.abortDynamicMemory(sessionId);
+      }
+      await saveSession({ ...session, memoryStatus: "idle", memoryError: null });
       dispatch({ type: "SET_ACTION_ERROR", value: null });
+      dispatch({ type: "SET_RETRY_STATUS", value: "idle" });
+      dispatch({ type: "SET_MEMORY_STATUS", value: "idle" });
+      void reload();
     } catch (err: any) {
       if (!isAbortError(err)) {
         console.error("Failed to abort memory processing:", err);
@@ -1194,7 +1200,7 @@ export function ChatMemoriesPage() {
       dispatch({ type: "SET_MEMORY_STATUS", value: "idle" });
       void reload();
     }
-  }, [sessionId, isDynamic, reload]);
+  }, [session, sessionId, isDynamic, reload]);
 
   if (loading) {
     return (
@@ -1778,9 +1784,7 @@ export function ChatMemoriesPage() {
                 </span>
                 <button
                   onClick={
-                    session?.memoryStatus === "processing"
-                      ? handleAbortMemoryCycle
-                      : handleTriggerManual
+                    session?.memoryStatus !== "idle" ? handleAbortMemoryCycle : handleTriggerManual
                   }
                   className={cn(
                     "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg",
@@ -1790,15 +1794,12 @@ export function ChatMemoriesPage() {
                     "transition-all active:scale-95",
                   )}
                 >
-                  {session?.memoryStatus === "processing" ? (
+                  {session?.memoryStatus !== "idle" ? (
                     <X size={12} className="animate-pulse" />
                   ) : (
-                    <Cpu
-                      size={12}
-                      className={cn(session?.memoryStatus === "processing" && "animate-pulse")}
-                    />
+                    <Cpu size={12} />
                   )}
-                  {session?.memoryStatus === "processing" ? t("common.buttons.cancel") : "Run"}
+                  {session?.memoryStatus !== "idle" ? t("common.buttons.cancel") : "Run"}
                 </button>
               </div>
               <ToolLog events={(session.memoryToolEvents as MemoryToolEvent[]) || []} />
