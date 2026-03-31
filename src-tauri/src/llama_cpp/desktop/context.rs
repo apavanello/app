@@ -5,6 +5,7 @@ use llama_cpp_sys_2::{
     ggml_backend_dev_count, ggml_backend_dev_get, ggml_backend_dev_memory, ggml_backend_dev_type,
     GGML_BACKEND_DEVICE_TYPE_ACCEL, GGML_BACKEND_DEVICE_TYPE_GPU, GGML_BACKEND_DEVICE_TYPE_IGPU,
 };
+use std::sync::OnceLock;
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -14,6 +15,31 @@ pub(crate) struct LlamaCppContextInfo {
     available_memory_bytes: Option<u64>,
     available_vram_bytes: Option<u64>,
     model_size_bytes: Option<u64>,
+}
+
+static CONTEXT_INFO_BACKEND: OnceLock<LlamaBackend> = OnceLock::new();
+
+fn context_info_backend() -> Result<&'static LlamaBackend, String> {
+    if let Some(backend) = CONTEXT_INFO_BACKEND.get() {
+        return Ok(backend);
+    }
+
+    let backend = LlamaBackend::init().map_err(|e| {
+        crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!("Failed to initialize llama backend for context info: {e}"),
+        )
+    })?;
+
+    let _ = CONTEXT_INFO_BACKEND.set(backend);
+    CONTEXT_INFO_BACKEND.get().ok_or_else(|| {
+        crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            "Failed to cache llama backend for context info",
+        )
+    })
 }
 
 fn push_unique_u32(out: &mut Vec<u32>, value: u32) {
@@ -312,13 +338,7 @@ pub(crate) async fn llamacpp_context_info(
         ));
     }
 
-    let backend = LlamaBackend::init().map_err(|e| {
-        crate::utils::err_msg(
-            module_path!(),
-            line!(),
-            format!("Failed to initialize llama backend for context info: {e}"),
-        )
-    })?;
+    let backend = context_info_backend()?;
     let model = LlamaModel::load_from_file(
         &backend,
         &model_path,
