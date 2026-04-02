@@ -573,7 +573,6 @@ function AppContent() {
     () => location.pathname.startsWith("/settings"),
     [location.pathname],
   );
-  const shouldAnimatePage = !location.pathname.startsWith("/settings/providers");
 
   const isLorebookEditorRoute = useMemo(
     () =>
