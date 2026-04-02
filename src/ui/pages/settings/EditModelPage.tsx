@@ -46,7 +46,6 @@ import {
   Search,
   ChevronDown,
   ChevronRight,
-  ChevronUp,
   HelpCircle,
   AlertTriangle,
   FolderOpen,
@@ -55,6 +54,7 @@ import {
   ArrowRight,
   CopyCheck,
   Copy,
+  Maximize2,
 } from "lucide-react";
 import { ProviderParameterSupportInfo } from "../../components/ProviderParameterSupportInfo";
 import { toast } from "../../components/toast";
@@ -154,7 +154,7 @@ function getLlamaRuntimeDetail(report: LlamaLastRuntimeReport): string {
 }
 
 type EditorViewMode = "simple" | "advanced";
-type EditorSectionKey = "generation" | "runtime" | "reasoning" | "caching";
+type EditorSectionKey = "generation" | "runtime" | "reasoning" | "caching" | "capabilities";
 type SimpleEditorSectionKey = "generation" | "runtime" | "reasoning" | "capabilities";
 
 const EDITOR_FADE_DURATION = 0.16;
@@ -295,22 +295,6 @@ function FieldBlock({
   );
 }
 
-function SummaryField({
-  label,
-  value,
-  mono = false,
-}: {
-  label: string;
-  value: ReactNode;
-  mono?: boolean;
-}) {
-  return (
-    <div className="grid grid-cols-[92px_minmax(0,1fr)] gap-3 text-[13px]">
-      <dt className="text-fg/45">{label}</dt>
-      <dd className={cn("min-w-0 text-fg/82", mono && "font-mono text-[12px]")}>{value}</dd>
-    </div>
-  );
-}
 
 function CollapsedEditorSectionButton({
   title,
@@ -380,6 +364,8 @@ export function EditModelPage() {
   const [movingModel, setMovingModel] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [showLlamaRuntimeReport, setShowLlamaRuntimeReport] = useState(false);
+  const [showTemplateOverlay, setShowTemplateOverlay] = useState(false);
+  const [templateOverlayDraft, setTemplateOverlayDraft] = useState("");
   const [showEmbeddedTemplateViewer, setShowEmbeddedTemplateViewer] = useState(false);
   const [embeddedTemplateLoading, setEmbeddedTemplateLoading] = useState(false);
   const [embeddedTemplateText, setEmbeddedTemplateText] = useState("");
@@ -779,12 +765,27 @@ export function EditModelPage() {
 
   const handleUseEmbeddedTemplate = () => {
     if (!embeddedTemplateText.trim()) return;
-    handleLlamaChatTemplateOverrideChange(embeddedTemplateText);
+    setTemplateOverlayDraft(embeddedTemplateText);
     setShowEmbeddedTemplateViewer(false);
-    toast.success(
-      "Template applied",
-      "The embedded GGUF template was copied into Template Override.",
+    toast.success("Embedded template pasted into editor");
+  };
+
+  const openTemplateOverlay = () => {
+    setTemplateOverlayDraft(modelAdvancedDraft.llamaChatTemplateOverride ?? "");
+    setShowTemplateOverlay(true);
+  };
+
+  const saveTemplateOverlay = () => {
+    handleLlamaChatTemplateOverrideChange(
+      templateOverlayDraft.trim() === "" ? null : templateOverlayDraft,
     );
+    setShowTemplateOverlay(false);
+    setShowEmbeddedTemplateViewer(false);
+  };
+
+  const cancelTemplateOverlay = () => {
+    setShowTemplateOverlay(false);
+    setShowEmbeddedTemplateViewer(false);
   };
 
   // Check if a path is outside the GGUF models dir
@@ -1154,19 +1155,6 @@ export function EditModelPage() {
     editorModel?.providerLabel ||
     editorModel?.providerId ||
     "Select platform";
-  const localModelFilename = editorModel?.name?.split(/[/\\]/).filter(Boolean).pop() || "";
-  const summaryModelLabel = isLocalModel
-    ? editorModel?.displayName || localModelFilename || "Not selected"
-    : selectedFetchedModel?.displayName || editorModel?.name || "Not selected";
-  const modelSourceLabel = isLocalModel
-    ? "Local file"
-    : !modelFetchEnabledForSelectedProvider
-      ? "Manual entry"
-      : isManualInput || fetchedModels.length === 0
-        ? "Manual entry"
-        : "Provider catalog";
-  const shouldShowMoveReminder =
-    isLocalModel && isPathOutsideGgufDir(editorModel.name?.trim() ?? "");
   const hasRuntimePanel = isLocalModel || isOllamaModel;
   const runtimePanelTitle = isLocalModel ? "llama.cpp" : isOllamaModel ? "Ollama" : "Runtime";
   const effectiveEditorViewMode: EditorViewMode = isMobile ? "simple" : editorViewMode;
@@ -1497,12 +1485,9 @@ export function EditModelPage() {
             </div>
           )}
 
-          <div className="relative xl:pr-96">
+          <div className="relative">
             <div
-              className={cn(
-                "w-full space-y-6 transition-transform duration-200 ease-in-out xl:max-w-190",
-                effectiveEditorViewMode === "advanced" ? "xl:translate-x-0" : "xl:translate-x-48",
-              )}
+              className="w-full space-y-6"
             >
               <EditorPanel
                 title="Model setup"
@@ -2155,6 +2140,22 @@ export function EditModelPage() {
                           </div>
                         </button>
                       )}
+
+                      <button
+                        type="button"
+                        onClick={() => setActiveAdvancedPanel("capabilities")}
+                        className={cn(
+                          "rounded-lg border px-4 py-3 text-left transition",
+                          activeAdvancedPanel === "capabilities"
+                            ? "border-fg/22 bg-fg/8 text-fg"
+                            : "border-fg/10 bg-transparent text-fg/65 hover:border-fg/18 hover:bg-fg/4 hover:text-fg/90",
+                        )}
+                      >
+                        <div className="text-[13px] font-medium">Capabilities</div>
+                        <div className="mt-1 text-[13px] text-fg/45">
+                          Input and output modalities this model supports.
+                        </div>
+                      </button>
                     </div>
                   ) : (
                     <>
@@ -2758,7 +2759,7 @@ export function EditModelPage() {
                               Local Inference (llama.cpp)
                             </label>
 
-                            <div className="space-y-6">
+                            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2 xl:items-start">
                               {/* 1. Memory & Context */}
                               <div className="space-y-6 rounded-xl border border-fg/8 bg-surface-el/10 p-4">
                                 <div className="flex items-center gap-2 border-l-2 border-accent/30 pl-3">
@@ -3212,20 +3213,19 @@ export function EditModelPage() {
                                     />
                                   </div>
                                 </div>
-                              </div>
 
-                              {/* 2. Performance */}
-                              <div className="space-y-6 rounded-xl border border-fg/8 bg-surface-el/10 p-4">
-                                <div className="flex items-center gap-2 border-l-2 border-accent/30 pl-3">
-                                  <div className="space-y-0.5">
-                                    <span className="block text-[13px] font-bold text-fg/80 uppercase tracking-tight">
-                                      Performance
-                                    </span>
-                                    <span className="block text-[13px] text-fg/40">
-                                      Hardware acceleration and threading
-                                    </span>
+                                {/* Performance */}
+                                <div className="space-y-6 border-t border-fg/8 pt-6">
+                                  <div className="flex items-center gap-2 border-l-2 border-accent/30 pl-3">
+                                    <div className="space-y-0.5">
+                                      <span className="block text-[13px] font-bold text-fg/80 uppercase tracking-tight">
+                                        Performance
+                                      </span>
+                                      <span className="block text-[13px] text-fg/40">
+                                        Hardware acceleration and threading
+                                      </span>
+                                    </div>
                                   </div>
-                                </div>
 
                                 <div className="space-y-3 rounded-xl border border-fg/10 bg-surface-el/10 p-3">
                                   <span className="block text-[13px] font-medium text-fg/70">
@@ -3439,9 +3439,10 @@ export function EditModelPage() {
                                     </select>
                                   </div>
                                 </div>
+                                </div>
                               </div>
 
-                              {/* 3. Sampling & Quality */}
+                              {/* 3. Sampling & Quality + 4. Prompting & Templates */}
                               <div className="space-y-6 rounded-xl border border-fg/8 bg-surface-el/10 p-4">
                                 <div className="flex items-center gap-2 border-l-2 border-accent/30 pl-3">
                                   <div className="space-y-0.5">
@@ -3581,22 +3582,21 @@ export function EditModelPage() {
                                     className={numberInputClassName}
                                   />
                                 </div>
-                              </div>
 
-                              {/* 4. Chat Templates */}
-                              <div className="space-y-6 rounded-xl border border-fg/8 bg-surface-el/10 p-4">
-                                <div className="flex items-center gap-2 border-l-2 border-accent/30 pl-3">
-                                  <div className="space-y-0.5">
-                                    <span className="block text-[13px] font-bold text-fg/80 uppercase tracking-tight">
-                                      Prompting & Templates
-                                    </span>
-                                    <span className="block text-[13px] text-fg/40">
-                                      Format controls and fallbacks
-                                    </span>
+                                {/* Prompting & Templates */}
+                                <div className="space-y-6 border-t border-fg/8 pt-6">
+                                  <div className="flex items-center gap-2 border-l-2 border-accent/30 pl-3">
+                                    <div className="space-y-0.5">
+                                      <span className="block text-[13px] font-bold text-fg/80 uppercase tracking-tight">
+                                        Prompting & Templates
+                                      </span>
+                                      <span className="block text-[13px] text-fg/40">
+                                        Format controls and fallbacks
+                                      </span>
+                                    </div>
                                   </div>
-                                </div>
 
-                                <div className="space-y-3">
+                                <div className="space-y-4">
                                   <div className="flex items-start justify-between gap-3">
                                     <div className="space-y-0.5">
                                       <span className="block text-[13px] font-medium text-fg/70">
@@ -3608,89 +3608,30 @@ export function EditModelPage() {
                                     </div>
                                     <button
                                       type="button"
-                                      onClick={toggleEmbeddedTemplate}
-                                      className={cn(
-                                        "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[12px] font-medium transition",
-                                        showEmbeddedTemplateViewer
-                                          ? "border-accent/30 bg-accent/10 text-accent"
-                                          : "border-fg/10 bg-fg/5 text-fg/68 hover:border-fg/20 hover:bg-fg/10 hover:text-fg",
-                                      )}
+                                      onClick={openTemplateOverlay}
+                                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-fg/10 bg-fg/5 px-2.5 py-1.5 text-[12px] font-medium text-fg/68 transition hover:border-fg/20 hover:bg-fg/10 hover:text-fg"
                                     >
-                                      {showEmbeddedTemplateViewer ? (
-                                        <ChevronUp className="h-3.5 w-3.5" />
-                                      ) : (
-                                        <CopyCheck className="h-3.5 w-3.5 text-accent/70" />
-                                      )}
-                                      {showEmbeddedTemplateViewer
-                                        ? "Hide Embedded"
-                                        : "Show Embedded"}
+                                      <Maximize2 className="h-3.5 w-3.5 text-accent/70" />
+                                      Edit
                                     </button>
                                   </div>
-
-                                  {showEmbeddedTemplateViewer && (
-                                    <div className="overflow-hidden rounded-lg border border-fg/8 bg-[#0b0c10]">
-                                      {embeddedTemplateLoading ? (
-                                        <div className="flex h-40 items-center justify-center text-[12px] text-fg/50">
-                                          <Loader className="mr-2 h-3.5 w-3.5 animate-spin" />
-                                          Reading embedded template...
-                                        </div>
-                                      ) : embeddedTemplateError ? (
-                                        <div className="space-y-1 p-3">
-                                          <div className="text-[12px] font-medium text-danger">
-                                            Could not read embedded template
-                                          </div>
-                                          <div className="whitespace-pre-wrap break-words text-[12px] text-fg/50">
-                                            {embeddedTemplateError}
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <>
-                                          <pre
-                                            className="max-h-64 overflow-auto px-3 py-2.5 font-mono text-[11px] leading-[18px]"
-                                            dangerouslySetInnerHTML={{
-                                              __html: highlightedTemplate ?? "",
-                                            }}
-                                          />
-                                          <div className="flex items-center justify-end gap-2 border-t border-fg/6 px-3 py-2">
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                navigator.clipboard.writeText(
-                                                  embeddedTemplateText,
-                                                );
-                                                toast.success("Copied to clipboard");
-                                              }}
-                                              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-fg/50 transition hover:bg-fg/8 hover:text-fg/70"
-                                            >
-                                              <Copy className="h-3 w-3" />
-                                              Copy
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={handleUseEmbeddedTemplate}
-                                              disabled={!embeddedTemplateText.trim()}
-                                              className="inline-flex items-center gap-1.5 rounded-md bg-accent/12 px-2.5 py-1 text-[11px] font-medium text-accent transition hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
-                                            >
-                                              <CopyCheck className="h-3 w-3" />
-                                              Use as Override
-                                            </button>
-                                          </div>
-                                        </>
-                                      )}
-                                    </div>
-                                  )}
-
-                                  <textarea
-                                    value={modelAdvancedDraft.llamaChatTemplateOverride ?? ""}
-                                    onChange={(e) =>
-                                      handleLlamaChatTemplateOverrideChange(
-                                        e.target.value === "" ? null : e.target.value,
-                                      )
-                                    }
-                                    rows={2}
-                                    placeholder="Prefer embedded GGUF template"
-                                    className={selectInputClassName}
-                                  />
+                                  <button
+                                    type="button"
+                                    onClick={openTemplateOverlay}
+                                    className={cn(
+                                      selectInputClassName,
+                                      "block w-full cursor-pointer truncate text-left",
+                                      modelAdvancedDraft.llamaChatTemplateOverride
+                                        ? "text-fg/78"
+                                        : "text-fg/35",
+                                    )}
+                                  >
+                                    {modelAdvancedDraft.llamaChatTemplateOverride
+                                      ? modelAdvancedDraft.llamaChatTemplateOverride.length > 80
+                                        ? `${modelAdvancedDraft.llamaChatTemplateOverride.slice(0, 80)}...`
+                                        : modelAdvancedDraft.llamaChatTemplateOverride
+                                      : "Prefer embedded GGUF template"}
+                                  </button>
                                 </div>
 
                                 <div className="space-y-4">
@@ -3727,71 +3668,74 @@ export function EditModelPage() {
                                   />
                                 </div>
 
-                                <div className="space-y-4">
-                                  <div className="space-y-0.5">
-                                    <span className="block text-[13px] font-medium text-fg/70">
-                                      Template Preset
-                                    </span>
-                                    <span className="block text-[13px] text-fg/40">
-                                      Fallback if GGUF has no template
-                                    </span>
+                                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                                  <div className="space-y-4">
+                                    <div className="space-y-0.5">
+                                      <span className="block text-[13px] font-medium text-fg/70">
+                                        Template Preset
+                                      </span>
+                                      <span className="block text-[13px] text-fg/40">
+                                        Fallback if GGUF has no template
+                                      </span>
+                                    </div>
+                                    <select
+                                      value={modelAdvancedDraft.llamaChatTemplatePreset ?? "auto"}
+                                      onChange={(e) =>
+                                        handleLlamaChatTemplatePresetChange(
+                                          e.target.value === "auto" ? null : e.target.value,
+                                        )
+                                      }
+                                      className={selectInputClassName}
+                                    >
+                                      {LLAMA_CHAT_TEMPLATE_PRESET_OPTIONS.map((option) => (
+                                        <option
+                                          key={option.value}
+                                          value={option.value}
+                                          className="bg-[#16171d]"
+                                        >
+                                          {option.label}
+                                        </option>
+                                      ))}
+                                    </select>
                                   </div>
-                                  <select
-                                    value={modelAdvancedDraft.llamaChatTemplatePreset ?? "auto"}
-                                    onChange={(e) =>
-                                      handleLlamaChatTemplatePresetChange(
-                                        e.target.value === "auto" ? null : e.target.value,
-                                      )
-                                    }
-                                    className={selectInputClassName}
-                                  >
-                                    {LLAMA_CHAT_TEMPLATE_PRESET_OPTIONS.map((option) => (
-                                      <option
-                                        key={option.value}
-                                        value={option.value}
-                                        className="bg-[#16171d]"
-                                      >
-                                        {option.label}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
 
-                                <div className="space-y-4">
-                                  <div className="space-y-0.5">
-                                    <span className="block text-[13px] font-medium text-fg/70">
-                                      Raw Completion Fallback
-                                    </span>
-                                    <span className="block text-[13px] text-fg/40">
-                                      Only for raw-tuned models
-                                    </span>
+                                  <div className="space-y-4">
+                                    <div className="space-y-0.5">
+                                      <span className="block text-[13px] font-medium text-fg/70">
+                                        Raw Completion Fallback
+                                      </span>
+                                      <span className="block text-[13px] text-fg/40">
+                                        Only for raw-tuned models
+                                      </span>
+                                    </div>
+                                    <select
+                                      value={
+                                        modelAdvancedDraft.llamaRawCompletionFallback === true
+                                          ? "enabled"
+                                          : modelAdvancedDraft.llamaRawCompletionFallback === false
+                                            ? "disabled"
+                                            : "default"
+                                      }
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        handleLlamaRawCompletionFallbackChange(
+                                          val === "default" ? null : val === "enabled",
+                                        );
+                                      }}
+                                      className={selectInputClassName}
+                                    >
+                                      <option value="default" className="bg-[#16171d]">
+                                        Default (disabled)
+                                      </option>
+                                      <option value="enabled" className="bg-[#16171d]">
+                                        Enabled
+                                      </option>
+                                      <option value="disabled" className="bg-[#16171d]">
+                                        Disabled
+                                      </option>
+                                    </select>
                                   </div>
-                                  <select
-                                    value={
-                                      modelAdvancedDraft.llamaRawCompletionFallback === true
-                                        ? "enabled"
-                                        : modelAdvancedDraft.llamaRawCompletionFallback === false
-                                          ? "disabled"
-                                          : "default"
-                                    }
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      handleLlamaRawCompletionFallbackChange(
-                                        val === "default" ? null : val === "enabled",
-                                      );
-                                    }}
-                                    className={selectInputClassName}
-                                  >
-                                    <option value="default" className="bg-[#16171d]">
-                                      Default (disabled)
-                                    </option>
-                                    <option value="enabled" className="bg-[#16171d]">
-                                      Enabled
-                                    </option>
-                                    <option value="disabled" className="bg-[#16171d]">
-                                      Disabled
-                                    </option>
-                                  </select>
+                                </div>
                                 </div>
                               </div>
                             </div>
@@ -4626,156 +4570,6 @@ export function EditModelPage() {
                 </motion.div>
               </AnimatePresence>
             </div>
-
-            <AnimatePresence initial={false}>
-              {effectiveEditorViewMode === "advanced" && (
-                <motion.aside
-                  key="advanced-sidebar"
-                  initial={{ opacity: 0, x: 18 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 12 }}
-                  transition={{
-                    duration: EDITOR_FADE_DURATION,
-                    ease: "easeInOut",
-                  }}
-                  className="space-y-6 xl:absolute xl:right-0 xl:top-0 xl:w-90"
-                >
-                  <EditorPanel
-                    title="Current configuration"
-                    description="This stays visible on desktop so you can confirm what you are editing without scrolling back through the form."
-                  >
-                    <dl className="space-y-3.5">
-                      <SummaryField label="Platform" value={selectedProviderLabel} />
-                      <SummaryField label="Source" value={modelSourceLabel} />
-                      <SummaryField label="Model" value={summaryModelLabel} mono={isLocalModel} />
-                    </dl>
-                    {isLocalModel && editorModel.name && (
-                      <div className="mt-4 rounded-lg border border-fg/10 bg-fg/4 px-3 py-2.5">
-                        <div className="text-[13px] text-fg/45">Path</div>
-                        <div
-                          className="mt-1 break-all font-mono text-[12px] leading-5 text-fg/62"
-                          title={editorModel.name}
-                        >
-                          {editorModel.name}
-                        </div>
-                      </div>
-                    )}
-                  </EditorPanel>
-
-                  <EditorPanel
-                    title="Capabilities"
-                    description="Mark which modalities this model accepts and what it can produce."
-                    action={
-                      <button
-                        type="button"
-                        onClick={() => openDocs("imagegen", "model-capabilities")}
-                        className="rounded-md border border-fg/10 p-1.5 text-fg/45 transition hover:border-fg/20 hover:bg-fg/5 hover:text-fg/80"
-                        aria-label="Help with capabilities"
-                      >
-                        <HelpCircle size={14} />
-                      </button>
-                    }
-                  >
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-1">
-                      <div className="space-y-3">
-                        <p className="text-[13px] font-medium text-fg/72">Input</p>
-                        {["image", "audio"].map((scope) => (
-                          <button
-                            key={scope}
-                            type="button"
-                            disabled={isAutomatic1111Provider}
-                            onClick={() =>
-                              toggleScope(
-                                "inputScopes",
-                                scope as any,
-                                !editorModel.inputScopes?.includes(scope as any),
-                              )
-                            }
-                            className={cn(
-                              "flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-[13px] transition",
-                              isAutomatic1111Provider && "cursor-not-allowed opacity-60",
-                              editorModel.inputScopes?.includes(scope as any)
-                                ? "border-accent/25 bg-accent/10 text-accent"
-                                : "border-fg/10 bg-fg/5 text-fg/55 hover:border-fg/20 hover:bg-fg/8 hover:text-fg/85",
-                            )}
-                          >
-                            <span className="capitalize">{scope}</span>
-                            {editorModel.inputScopes?.includes(scope as any) ? (
-                              <Check size={14} />
-                            ) : null}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="space-y-3">
-                        <p className="text-[13px] font-medium text-fg/72">Output</p>
-                        {["image", "audio"].map((scope) => (
-                          <button
-                            key={scope}
-                            type="button"
-                            disabled={isAutomatic1111Provider}
-                            onClick={() =>
-                              toggleScope(
-                                "outputScopes",
-                                scope as any,
-                                !editorModel.outputScopes?.includes(scope as any),
-                              )
-                            }
-                            className={cn(
-                              "flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-[13px] transition",
-                              isAutomatic1111Provider && "cursor-not-allowed opacity-60",
-                              editorModel.outputScopes?.includes(scope as any)
-                                ? "border-accent/25 bg-accent/10 text-accent"
-                                : "border-fg/10 bg-fg/5 text-fg/55 hover:border-fg/20 hover:bg-fg/8 hover:text-fg/85",
-                            )}
-                          >
-                            <span className="capitalize">{scope}</span>
-                            {editorModel.outputScopes?.includes(scope as any) ? (
-                              <Check size={14} />
-                            ) : null}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    {isAutomatic1111Provider && (
-                      <p className="mt-4 text-[12px] leading-relaxed text-fg/45">
-                        AUTOMATIC1111 models are fixed to text + image input and image output.
-                      </p>
-                    )}
-                  </EditorPanel>
-
-                  {(shouldShowMoveReminder ||
-                    !modelFetchEnabledForSelectedProvider ||
-                    isLocalModel) && (
-                    <EditorPanel
-                      title="Notes"
-                      description="A few page-level details that affect how this model behaves after save."
-                    >
-                      <div className="space-y-3 text-[13px] leading-relaxed text-fg/65">
-                        {isLocalModel && (
-                          <p>
-                            Local llama.cpp models use the file path above. The runtime settings in
-                            the advanced section only apply to this provider.
-                          </p>
-                        )}
-                        {!isLocalModel && !modelFetchEnabledForSelectedProvider && (
-                          <p>
-                            This provider does not expose model discovery here, so the model
-                            identifier must be entered manually.
-                          </p>
-                        )}
-                        {shouldShowMoveReminder && (
-                          <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5 text-warning/85">
-                            Saving will ask whether this GGUF file should be moved into your local
-                            model library.
-                          </div>
-                        )}
-                      </div>
-                    </EditorPanel>
-                  )}
-                </motion.aside>
-              )}
-            </AnimatePresence>
           </div>
         </motion.div>
       </main>
@@ -4790,6 +4584,122 @@ export function EditModelPage() {
           <ProviderParameterSupportInfo providerId={editorModel?.providerId || "openai"} />
         </div>
       </BottomMenu>
+
+      <AnimatePresence>
+        {showTemplateOverlay && (
+          <motion.div
+            className="fixed inset-0 z-50 flex h-full flex-col bg-surface"
+            style={{ paddingTop: "env(safe-area-inset-top)" }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.2 }}
+          >
+            <div className="flex items-center justify-between border-b border-fg/10 px-4 py-3">
+              <div className="text-base font-semibold text-fg">Template Override</div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={toggleEmbeddedTemplate}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition",
+                    showEmbeddedTemplateViewer
+                      ? "border-accent/30 bg-accent/10 text-accent"
+                      : "border-fg/10 text-fg/70 hover:bg-fg/10 hover:text-fg",
+                  )}
+                >
+                  <CopyCheck className="h-3 w-3" />
+                  {showEmbeddedTemplateViewer ? "Hide Embedded" : "Show Embedded"}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelTemplateOverlay}
+                  className="rounded-full border border-fg/10 px-3 py-1.5 text-xs font-medium text-fg/70 transition hover:bg-fg/10 hover:text-fg"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={saveTemplateOverlay}
+                  className={cn(
+                    "rounded-full px-3 py-1.5 text-xs font-semibold text-fg transition",
+                    "bg-linear-to-r from-accent to-accent/80",
+                    "hover:from-accent/80 hover:to-accent/60",
+                  )}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 pb-6 pt-4">
+              <div className="mx-auto max-w-4xl space-y-4">
+                {showEmbeddedTemplateViewer && (
+                  <div className="overflow-hidden rounded-xl border border-fg/8 bg-[#0b0c10]">
+                    {embeddedTemplateLoading ? (
+                      <div className="flex h-40 items-center justify-center text-[12px] text-fg/50">
+                        <Loader className="mr-2 h-3.5 w-3.5 animate-spin" />
+                        Reading embedded template...
+                      </div>
+                    ) : embeddedTemplateError ? (
+                      <div className="space-y-1 p-3">
+                        <div className="text-[12px] font-medium text-danger">
+                          Could not read embedded template
+                        </div>
+                        <div className="whitespace-pre-wrap break-words text-[12px] text-fg/50">
+                          {embeddedTemplateError}
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <pre
+                          className="max-h-64 overflow-auto px-4 py-3 font-mono text-[11px] leading-[18px]"
+                          dangerouslySetInnerHTML={{
+                            __html: highlightedTemplate ?? "",
+                          }}
+                        />
+                        <div className="flex items-center justify-end gap-2 border-t border-fg/6 px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(embeddedTemplateText);
+                              toast.success("Copied to clipboard");
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-fg/50 transition hover:bg-fg/8 hover:text-fg/70"
+                          >
+                            <Copy className="h-3 w-3" />
+                            Copy
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleUseEmbeddedTemplate}
+                            disabled={!embeddedTemplateText.trim()}
+                            className="inline-flex items-center gap-1.5 rounded-md bg-accent/12 px-2.5 py-1 text-[11px] font-medium text-accent transition hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <CopyCheck className="h-3 w-3" />
+                            Paste into Editor
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-fg/80">Jinja Template</div>
+                  <textarea
+                    value={templateOverlayDraft}
+                    onChange={(e) => setTemplateOverlayDraft(e.target.value)}
+                    className="min-h-[50vh] w-full resize-none rounded-2xl border border-fg/10 bg-surface-el/40 px-4 py-4 font-mono text-[12px] leading-relaxed text-fg placeholder-fg/40 transition focus:border-fg/20 focus:outline-none"
+                    placeholder="Enter a Jinja chat template or an internal template name..."
+                    spellCheck={false}
+                  />
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
