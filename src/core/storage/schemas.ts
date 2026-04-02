@@ -422,6 +422,14 @@ export const PROVIDER_REASONING_CAPABILITIES: Record<string, ReasoningCapability
       { value: "high", label: "High", description: "Deep reasoning" },
     ],
   },
+  llamacpp: {
+    type: "effort",
+    options: [
+      { value: "low", label: "Low", description: "Quick responses" },
+      { value: "medium", label: "Medium", description: "Balanced" },
+      { value: "high", label: "High", description: "Deep reasoning" },
+    ],
+  },
   lmstudio: {
     type: "effort",
     options: [
@@ -1480,7 +1488,7 @@ export const PROVIDER_PARAMETER_SUPPORT = {
   llamacpp: {
     providerId: "llamacpp",
     displayName: "llama.cpp",
-    reasoningSupport: "none" as ReasoningSupport,
+    reasoningSupport: "dynamic" as ReasoningSupport,
     supportedParameters: {
       temperature: true,
       topP: true,
@@ -1506,9 +1514,9 @@ export const PROVIDER_PARAMETER_SUPPORT = {
       llamaSamplerProfile: true,
       llamaMinP: true,
       llamaTypicalP: true,
-      reasoningEnabled: false,
-      reasoningEffort: false,
-      reasoningBudgetTokens: false,
+      reasoningEnabled: true,
+      reasoningEffort: true,
+      reasoningBudgetTokens: true,
       ollamaNumCtx: false,
       ollamaNumPredict: false,
       ollamaNumKeep: false,
