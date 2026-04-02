@@ -168,16 +168,16 @@ function App() {
 
   useEffect(() => {
     if (typeof document === "undefined" || platform.os !== "linux") return;
-
+ 
     const styleId = "linux-color-scheme-dark";
     let style = document.getElementById(styleId) as HTMLStyleElement | null;
-
+/*
     if (!style) {
       style = document.createElement("style");
       style.id = styleId;
       style.textContent = ":root { color-scheme: dark; }";
       document.head.appendChild(style);
-    }
+    }*/
 
     return () => {
       style?.remove();
