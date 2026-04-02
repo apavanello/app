@@ -70,6 +70,33 @@ mod desktop {
 
     const LLAMA_RUNTIME_REPORT_UPDATED_EVENT: &str = "llama-runtime-report-updated";
 
+    trait GenerationSampler<Ctx> {
+        fn sample_generated_token(&mut self, ctx: &Ctx, idx: i32)
+            -> llama_cpp_2::token::LlamaToken;
+    }
+
+    impl GenerationSampler<llama_cpp_2::context::LlamaContext<'_>> for LlamaSampler {
+        fn sample_generated_token(
+            &mut self,
+            ctx: &llama_cpp_2::context::LlamaContext<'_>,
+            idx: i32,
+        ) -> llama_cpp_2::token::LlamaToken {
+            self.sample(ctx, idx)
+        }
+    }
+
+    fn sample_generated_token<S, Ctx>(
+        sampler: &mut S,
+        ctx: &Ctx,
+        idx: i32,
+    ) -> llama_cpp_2::token::LlamaToken
+    where
+        S: GenerationSampler<Ctx>,
+    {
+        // `sample()` already advances sampler state inside llama-cpp-rs.
+        sampler.sample_generated_token(ctx, idx)
+    }
+
     fn runtime_report_timestamp_ms() -> u64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -168,6 +195,78 @@ mod desktop {
         body.get("parallel_tool_calls")
             .and_then(|v| v.as_bool())
             .unwrap_or(false)
+    }
+
+    fn local_structured_debug_payload(
+        request_id: Option<&String>,
+        model_path: &str,
+        requested_tool_choice: Option<&Value>,
+        prompt_options: &OpenAICompatPromptOptions,
+        built_prompt: &prompt::BuiltPrompt,
+    ) -> Value {
+        let template_result = built_prompt.chat_template_result.as_ref();
+        let applied_template_source = built_prompt
+            .applied_template_source
+            .clone()
+            .or_else(|| built_prompt.attempted_template_source.clone());
+
+        json!({
+            "requestId": request_id,
+            "modelPath": model_path,
+            "templateSource": applied_template_source,
+            "requestedToolChoice": requested_tool_choice.cloned(),
+            "resolvedToolChoice": built_prompt.resolved_tool_choice,
+            "reasoningFormat": prompt_options.reasoning_format,
+            "parallelToolCalls": prompt_options.parallel_tool_calls,
+            "enableThinking": prompt_options.enable_thinking,
+            "hasGrammar": template_result.and_then(|result| result.grammar.as_ref()).is_some(),
+            "grammarLazy": template_result.map(|result| result.grammar_lazy),
+            "grammarTriggerCount": template_result.map(|result| result.grammar_triggers.len()),
+            "preservedTokenCount": template_result.map(|result| result.preserved_tokens.len()),
+            "additionalStopCount": template_result.map(|result| result.additional_stops.len()),
+        })
+    }
+
+    fn structured_output_failure(
+        app: &AppHandle,
+        request_id: Option<&String>,
+        model_path: &str,
+        requested_tool_choice: Option<&Value>,
+        prompt_options: &OpenAICompatPromptOptions,
+        built_prompt: &prompt::BuiltPrompt,
+        stage: &str,
+        error: impl std::fmt::Display,
+    ) -> String {
+        let payload = json!({
+            "stage": stage,
+            "error": error.to_string(),
+            "structured": local_structured_debug_payload(
+                request_id,
+                model_path,
+                requested_tool_choice,
+                prompt_options,
+                built_prompt,
+            ),
+        });
+
+        log_warn(
+            app,
+            "llama_cpp",
+            format!(
+                "local structured output failed cleanly at stage={} model={} error={}",
+                stage, model_path, error
+            ),
+        );
+        crate::utils::emit_debug(app, "llama_structured_failure", payload);
+
+        crate::utils::err_msg(
+            module_path!(),
+            line!(),
+            format!(
+                "Local llama structured output failed during {}: {}",
+                stage, error
+            ),
+        )
     }
 
     fn parse_stop_sequences(body: &Value) -> Vec<String> {
@@ -770,6 +869,19 @@ mod desktop {
                 tool_choice,
                 &openai_compat_options,
             )?;
+            if built_prompt.chat_template_result.is_some() {
+                crate::utils::emit_debug(
+                    &app,
+                    "llama_tool_calling",
+                    local_structured_debug_payload(
+                        request_id.as_ref(),
+                        model_path,
+                        tool_choice,
+                        &openai_compat_options,
+                        &built_prompt,
+                    ),
+                );
+            }
             let mut stop_sequences = parse_stop_sequences(body);
             for stop in &built_prompt.additional_stop_sequences {
                 if !stop.is_empty() && !stop_sequences.iter().any(|existing| existing == stop) {
@@ -828,7 +940,7 @@ mod desktop {
                     prompt_add_bos_reason(built_prompt.prompt_mode, model_default_add_bos),
                 ),
             );
-            let prompt = built_prompt.prompt;
+            let prompt = built_prompt.prompt.clone();
             let prepared_prompt = if use_vision {
                 let mtmd_ctx = mtmd_ctx.ok_or_else(|| {
                     crate::utils::err_msg(
@@ -1232,7 +1344,19 @@ mod desktop {
                 model,
                 &sampler_config,
                 built_prompt.chat_template_result.as_ref(),
-            )?;
+            )
+            .map_err(|e| {
+                structured_output_failure(
+                    &app,
+                    request_id.as_ref(),
+                    model_path,
+                    tool_choice,
+                    &openai_compat_options,
+                    &built_prompt,
+                    "grammar_sampler_init",
+                    e,
+                )
+            })?;
             log_info(
                 &app,
                 "llama_cpp",
@@ -1261,10 +1385,15 @@ mod desktop {
                 .map(|result| result.streaming_state_oaicompat())
                 .transpose()
                 .map_err(|e| {
-                    crate::utils::err_msg(
-                        module_path!(),
-                        line!(),
-                        format!("Failed to initialize llama.cpp structured parser: {e}"),
+                    structured_output_failure(
+                        &app,
+                        request_id.as_ref(),
+                        model_path,
+                        tool_choice,
+                        &openai_compat_options,
+                        &built_prompt,
+                        "structured_parser_init",
+                        e,
                     )
                 })?;
             let mut streamed_structured_text = String::new();
@@ -1290,7 +1419,7 @@ mod desktop {
                     }
                 }
 
-                let token = sampler.sample(&ctx, sample_index);
+                let token = sample_generated_token(&mut sampler, &ctx, sample_index);
 
                 if model.is_eog_token(token) {
                     reached_eos = true;
@@ -1387,10 +1516,15 @@ mod desktop {
                             if safe_parse_end > structured_parsed_len {
                                 let delta_input = &output[structured_parsed_len..safe_parse_end];
                                 let deltas = parser.update(delta_input, true).map_err(|e| {
-                                    crate::utils::err_msg(
-                                        module_path!(),
-                                        line!(),
-                                        format!("Failed to parse llama.cpp structured stream: {e}"),
+                                    structured_output_failure(
+                                        &app,
+                                        request_id.as_ref(),
+                                        model_path,
+                                        tool_choice,
+                                        &openai_compat_options,
+                                        &built_prompt,
+                                        "structured_stream_parse",
+                                        e,
                                     )
                                 })?;
                                 emit_structured_deltas(
@@ -1499,10 +1633,15 @@ mod desktop {
                 let parsed_message = template_result
                     .parse_response_oaicompat(&output, is_partial)
                     .map_err(|e| {
-                        crate::utils::err_msg(
-                            module_path!(),
-                            line!(),
-                            format!("Failed to parse llama.cpp structured response: {e}"),
+                        structured_output_failure(
+                            &app,
+                            request_id.as_ref(),
+                            model_path,
+                            tool_choice,
+                            &openai_compat_options,
+                            &built_prompt,
+                            "structured_response_parse",
+                            e,
                         )
                     })?;
                 let mut message: Value = serde_json::from_str(&parsed_message).map_err(|e| {
@@ -1712,6 +1851,51 @@ mod desktop {
             headers: HashMap::new(),
             data,
         })
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{sample_generated_token, GenerationSampler};
+
+        #[derive(Default)]
+        struct FakeSampler {
+            sample_calls: usize,
+            accept_calls: usize,
+        }
+
+        struct FakeContext;
+
+        impl FakeSampler {
+            fn accept(&mut self, _token: llama_cpp_2::token::LlamaToken) {
+                self.accept_calls += 1;
+            }
+        }
+
+        impl GenerationSampler<FakeContext> for FakeSampler {
+            fn sample_generated_token(
+                &mut self,
+                _ctx: &FakeContext,
+                _idx: i32,
+            ) -> llama_cpp_2::token::LlamaToken {
+                self.sample_calls += 1;
+                llama_cpp_2::token::LlamaToken(42)
+            }
+        }
+
+        #[test]
+        fn sample_helper_does_not_require_manual_accept() {
+            let ctx = FakeContext;
+            let mut sampler = FakeSampler::default();
+
+            let token = sample_generated_token(&mut sampler, &ctx, 7);
+
+            assert_eq!(token, llama_cpp_2::token::LlamaToken(42));
+            assert_eq!(sampler.sample_calls, 1);
+            assert_eq!(sampler.accept_calls, 0);
+
+            sampler.accept(token);
+            assert_eq!(sampler.accept_calls, 1);
+        }
     }
 }
 
