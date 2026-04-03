@@ -135,6 +135,9 @@ function formatRuntimeRate(value?: number | null): string | null {
 }
 
 function getLlamaRuntimeHeadline(report: LlamaLastRuntimeReport): string {
+  if (report.status === "succeeded") {
+    return "The last local run completed successfully.";
+  }
   if (report.status === "cpuFallbackSucceeded") {
     return "GPU load failed, then the model recovered on CPU.";
   }
@@ -145,6 +148,9 @@ function getLlamaRuntimeHeadline(report: LlamaLastRuntimeReport): string {
 }
 
 function getLlamaRuntimeDetail(report: LlamaLastRuntimeReport): string {
+  if (report.status === "succeeded") {
+    return "This report also seeds the smart offload cache so future runs can reuse the last stable GPU setup.";
+  }
   if (report.status === "cpuFallbackSucceeded") {
     return "We stored the CPU-safe context and batch that did run so you can reuse them.";
   }
@@ -484,6 +490,14 @@ export function EditModelPage() {
           ? null
           : llamaRuntimeReport.smartGpuLayerFallbackActivated
             ? "Active"
+            : "Not needed",
+      ],
+      [
+        "KQV fallback",
+        llamaRuntimeReport.kqvFallbackActivated == null
+          ? null
+          : llamaRuntimeReport.kqvFallbackActivated
+            ? "Moved to RAM"
             : "Not needed",
       ],
       [
@@ -1151,7 +1165,7 @@ export function EditModelPage() {
     if (requestedGpuLayers === null || requestedGpuLayers === undefined) {
       return {
         totalLayers,
-        detail: `Auto placement across ${totalLayers.toLocaleString()} total layers.`,
+        detail: `Auto placement • ${totalLayers.toLocaleString()} total layers`,
       };
     }
 
@@ -1159,7 +1173,7 @@ export function EditModelPage() {
     const cpuLayers = Math.max(totalLayers - gpuLayers, 0);
     return {
       totalLayers,
-      detail: `${gpuLayers.toLocaleString()} layers to GPU, ${cpuLayers.toLocaleString()} layers stay on CPU.`,
+      detail: `${gpuLayers.toLocaleString()} to GPU • ${cpuLayers.toLocaleString()} on CPU • ${totalLayers.toLocaleString()} total`,
     };
   }, [llamaContextInfo?.layerCount, modelAdvancedDraft.llamaGpuLayers]);
   const selectedContextLength = modelAdvancedDraft.contextLength ?? null;
@@ -1399,6 +1413,7 @@ export function EditModelPage() {
           modelPath,
           llamaOffloadKqv: modelAdvancedDraft.llamaOffloadKqv ?? null,
           llamaKvType: modelAdvancedDraft.llamaKvType ?? null,
+          llamaGpuLayers: modelAdvancedDraft.llamaGpuLayers ?? null,
         });
         if (!cancelled) {
           setLlamaContextInfo(info);
@@ -1429,6 +1444,7 @@ export function EditModelPage() {
     isLocalModel,
     modelAdvancedDraft.llamaOffloadKqv,
     modelAdvancedDraft.llamaKvType,
+    modelAdvancedDraft.llamaGpuLayers,
   ]);
 
   // Fetch runability score for local models
@@ -1543,12 +1559,15 @@ export function EditModelPage() {
                           <div
                             className={cn(
                               "mt-0.5 flex h-7 w-7 items-center justify-center rounded-md border",
-                              llamaRuntimeReport.status === "cpuFallbackSucceeded"
-                                ? "border-warning/30 bg-warning/10 text-warning"
-                                : "border-danger/30 bg-danger/10 text-danger",
+                              llamaRuntimeReport.status === "succeeded"
+                                ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-400"
+                                : llamaRuntimeReport.status === "cpuFallbackSucceeded"
+                                  ? "border-warning/30 bg-warning/10 text-warning"
+                                  : "border-danger/30 bg-danger/10 text-danger",
                             )}
                           >
-                            {llamaRuntimeReport.status === "cpuFallbackSucceeded" ? (
+                            {llamaRuntimeReport.status === "succeeded" ||
+                            llamaRuntimeReport.status === "cpuFallbackSucceeded" ? (
                               <Check className="h-4 w-4" />
                             ) : (
                               <AlertTriangle className="h-4 w-4" />
@@ -1562,16 +1581,20 @@ export function EditModelPage() {
                               <span
                                 className={cn(
                                   "rounded-md px-2 py-0.5 text-[11px] font-medium",
-                                  llamaRuntimeReport.status === "cpuFallbackSucceeded"
-                                    ? "bg-warning/12 text-warning"
-                                    : "bg-danger/12 text-danger",
+                                  llamaRuntimeReport.status === "succeeded"
+                                    ? "bg-emerald-400/12 text-emerald-400"
+                                    : llamaRuntimeReport.status === "cpuFallbackSucceeded"
+                                      ? "bg-warning/12 text-warning"
+                                      : "bg-danger/12 text-danger",
                                 )}
                               >
-                                {llamaRuntimeReport.status === "cpuFallbackSucceeded"
-                                  ? "CPU fallback recovered"
-                                  : llamaRuntimeReport.status === "cpuFallbackFailed"
-                                    ? "CPU fallback failed"
-                                    : "Run failed"}
+                                {llamaRuntimeReport.status === "succeeded"
+                                  ? "Run succeeded"
+                                  : llamaRuntimeReport.status === "cpuFallbackSucceeded"
+                                    ? "CPU fallback recovered"
+                                    : llamaRuntimeReport.status === "cpuFallbackFailed"
+                                      ? "CPU fallback failed"
+                                      : "Run failed"}
                               </span>
                             </div>
                             <p className="text-[13px] leading-relaxed text-fg/72">
@@ -3327,12 +3350,6 @@ export function EditModelPage() {
                                         {llamaLayerPlacementSummary ? (
                                           <span className="block text-[12px] text-fg/34">
                                             {llamaLayerPlacementSummary.detail}
-                                          </span>
-                                        ) : null}
-                                        {llamaLayerPlacementSummary ? (
-                                          <span className="block text-[12px] text-fg/34">
-                                            Model layers:{" "}
-                                            {llamaLayerPlacementSummary.totalLayers.toLocaleString()}
                                           </span>
                                         ) : null}
                                       </div>

@@ -22,6 +22,7 @@ pub(super) struct SmartGpuOffloadPlan {
     pub(super) estimated_gpu_layers: u32,
     pub(super) candidate_gpu_layers: Vec<u32>,
     pub(super) kqv_vram_reserved: bool,
+    pub(super) planning_offload_kqv: Option<bool>,
     pub(super) estimated_kv_bytes: u64,
     pub(super) estimated_runtime_reserve_bytes: u64,
     pub(super) effective_vram_budget_bytes: u64,
@@ -194,6 +195,84 @@ fn candidate_gpu_layers(total_layers: u32, estimated_gpu_layers: u32) -> Vec<u32
     candidates
 }
 
+pub(super) fn context_bucket_upper(context: u32) -> u32 {
+    match context {
+        0..=4096 => 4096,
+        4097..=8192 => 8192,
+        8193..=12288 => 12288,
+        12289..=16384 => 16384,
+        16385..=24576 => 24576,
+        24577..=32768 => 32768,
+        32769..=49152 => 49152,
+        49153..=65536 => 65536,
+        _ => ((context.saturating_add(8191)) / 8192) * 8192,
+    }
+}
+
+pub(super) fn merge_cached_candidate_layers(
+    total_layers: u32,
+    cached_gpu_layers: u32,
+    heuristic_candidates: &[u32],
+) -> Vec<u32> {
+    let mut merged = Vec::new();
+    let cached = cached_gpu_layers.min(total_layers);
+    if cached > 0 {
+        push_unique(&mut merged, cached);
+        push_unique(&mut merged, cached.saturating_mul(3) / 4);
+        push_unique(&mut merged, cached / 2);
+        push_unique(&mut merged, cached / 4);
+    }
+    for candidate in heuristic_candidates {
+        push_unique(&mut merged, (*candidate).min(total_layers));
+    }
+    push_unique(&mut merged, 0);
+    merged
+}
+
+pub(super) fn model_weight_split_bytes(
+    metadata: &LlamaModelMetadata,
+    gpu_layers: u32,
+) -> (u64, u64) {
+    let total_layers = metadata.layer_count.max(1);
+    let clamped_gpu_layers = gpu_layers.min(total_layers);
+    let gpu_weight_bytes = metadata
+        .model_size_bytes
+        .saturating_mul(u64::from(clamped_gpu_layers))
+        .checked_div(u64::from(total_layers))
+        .unwrap_or(0);
+    let cpu_weight_bytes = metadata.model_size_bytes.saturating_sub(gpu_weight_bytes);
+    (cpu_weight_bytes, gpu_weight_bytes)
+}
+
+pub(super) fn compute_recommended_context_for_gpu_layers(
+    metadata: &LlamaModelMetadata,
+    available_memory_bytes: Option<u64>,
+    available_vram_bytes: Option<u64>,
+    gpu_layers: u32,
+    llama_offload_kqv: Option<bool>,
+    llama_kv_type: Option<&str>,
+) -> Option<u32> {
+    let (cpu_weight_bytes, gpu_weight_bytes) = model_weight_split_bytes(metadata, gpu_layers);
+    let available_for_ctx = if llama_offload_kqv == Some(true) {
+        let vram = available_vram_bytes?;
+        let reserve = default_memory_reserve_bytes(vram);
+        vram.saturating_sub(gpu_weight_bytes.saturating_add(reserve))
+    } else {
+        let ram = available_memory_bytes?;
+        let reserve = default_memory_reserve_bytes(ram);
+        ram.saturating_sub(cpu_weight_bytes.saturating_add(reserve))
+    };
+    let kv_bytes_per_token = estimate_kv_bytes_per_token(metadata, llama_kv_type)?;
+    if kv_bytes_per_token == 0 {
+        return None;
+    }
+    let mut recommended = available_for_ctx / kv_bytes_per_token;
+    if recommended > u64::from(metadata.max_context_length) {
+        recommended = u64::from(metadata.max_context_length);
+    }
+    Some(recommended as u32)
+}
+
 pub(super) fn plan_smart_gpu_offload(
     model_path: &str,
     available_memory_bytes: Option<u64>,
@@ -219,31 +298,64 @@ pub(super) fn plan_smart_gpu_offload(
 
     let available_vram = available_vram_bytes.unwrap_or(0);
     let effective_vram_budget_bytes = available_vram.saturating_mul(9) / 10;
-    let kqv_vram_reserved = resolved_offload_kqv != Some(false);
-    let estimated_kv_bytes = if kqv_vram_reserved {
-        estimate_kv_bytes_per_token(&metadata, llama_kv_type)
-            .unwrap_or(0)
-            .saturating_mul(u64::from(planned_context))
-    } else {
-        0
-    };
     let estimated_runtime_reserve_bytes =
         estimated_runtime_reserve_bytes(available_vram, flash_attention_policy);
-    let available_for_layers = effective_vram_budget_bytes
-        .saturating_sub(estimated_runtime_reserve_bytes)
-        .saturating_sub(estimated_kv_bytes);
     let bytes_per_layer = metadata
         .model_size_bytes
         .checked_add(u64::from(total_layers) - 1)
         .and_then(|bytes| bytes.checked_div(u64::from(total_layers)))
         .unwrap_or(0);
-    let estimated_gpu_layers = if available_for_layers == 0 || bytes_per_layer == 0 {
-        0
-    } else {
-        u32::try_from((available_for_layers / bytes_per_layer).min(u64::from(total_layers)))
-            .unwrap_or(total_layers)
-            .min(total_layers)
+    let kv_bytes_per_token = estimate_kv_bytes_per_token(&metadata, llama_kv_type).unwrap_or(0);
+
+    let planning_modes: &[Option<bool>] = match resolved_offload_kqv {
+        Some(true) => &[Some(true)],
+        Some(false) => &[Some(false)],
+        None => &[Some(false), Some(true), None],
     };
+
+    let mut selected_plan: Option<(Option<bool>, bool, u64, u32)> = None;
+    for planning_offload_kqv in planning_modes {
+        let kqv_vram_reserved = *planning_offload_kqv == Some(true);
+        let estimated_kv_bytes = if kqv_vram_reserved {
+            kv_bytes_per_token.saturating_mul(u64::from(planned_context))
+        } else {
+            0
+        };
+        let available_for_layers = effective_vram_budget_bytes
+            .saturating_sub(estimated_runtime_reserve_bytes)
+            .saturating_sub(estimated_kv_bytes);
+        let estimated_gpu_layers = if available_for_layers == 0 || bytes_per_layer == 0 {
+            0
+        } else {
+            u32::try_from((available_for_layers / bytes_per_layer).min(u64::from(total_layers)))
+                .unwrap_or(total_layers)
+                .min(total_layers)
+        };
+
+        if selected_plan.is_none() {
+            selected_plan = Some((
+                *planning_offload_kqv,
+                kqv_vram_reserved,
+                estimated_kv_bytes,
+                estimated_gpu_layers,
+            ));
+        }
+
+        if estimated_gpu_layers > 0 || *planning_offload_kqv == Some(false) {
+            selected_plan = Some((
+                *planning_offload_kqv,
+                kqv_vram_reserved,
+                estimated_kv_bytes,
+                estimated_gpu_layers,
+            ));
+            if estimated_gpu_layers > 0 {
+                break;
+            }
+        }
+    }
+
+    let (planning_offload_kqv, kqv_vram_reserved, estimated_kv_bytes, estimated_gpu_layers) =
+        selected_plan.unwrap_or((Some(false), false, 0, 0));
 
     Ok(SmartGpuOffloadPlan {
         total_layers,
@@ -252,6 +364,7 @@ pub(super) fn plan_smart_gpu_offload(
         estimated_gpu_layers,
         candidate_gpu_layers: candidate_gpu_layers(total_layers, estimated_gpu_layers),
         kqv_vram_reserved,
+        planning_offload_kqv,
         estimated_kv_bytes,
         estimated_runtime_reserve_bytes,
         effective_vram_budget_bytes,

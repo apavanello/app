@@ -156,7 +156,7 @@ export const LlamaRuntimeSuggestedSettingsSchema = z.object({
 export type LlamaRuntimeSuggestedSettings = z.infer<typeof LlamaRuntimeSuggestedSettingsSchema>;
 
 export const LlamaLastRuntimeReportSchema = z.object({
-  status: z.enum(["cpuFallbackSucceeded", "cpuFallbackFailed", "failed"]),
+  status: z.enum(["succeeded", "cpuFallbackSucceeded", "cpuFallbackFailed", "failed"]),
   updatedAt: z.number().int().nullable().optional(),
   modelPath: z.string().trim().min(1),
   backendPathUsed: z.string().trim().min(1).nullable().optional(),
@@ -174,11 +174,13 @@ export const LlamaLastRuntimeReportSchema = z.object({
   initialBatchCandidate: z.number().int().min(1).nullable().optional(),
   actualBatchUsed: z.number().int().min(1).nullable().optional(),
   smartGpuLayerFallbackActivated: z.boolean().nullable().optional(),
+  kqvFallbackActivated: z.boolean().nullable().optional(),
   smartOffloadPlannedContext: z.number().int().min(1).nullable().optional(),
   smartOffloadRecommendedContext: z.number().int().min(1).nullable().optional(),
   smartOffloadEstimatedGpuLayers: z.number().int().min(0).nullable().optional(),
   smartOffloadCandidateLayers: z.array(z.number().int().min(0)).nullable().optional(),
   smartOffloadKqvVramReserved: z.boolean().nullable().optional(),
+  smartOffloadPlanningKqvMode: z.boolean().nullable().optional(),
   smartOffloadEstimatedKvBytes: z.number().int().nonnegative().nullable().optional(),
   smartOffloadRuntimeReserveBytes: z.number().int().nonnegative().nullable().optional(),
   smartOffloadEffectiveVramBudgetBytes: z.number().int().nonnegative().nullable().optional(),

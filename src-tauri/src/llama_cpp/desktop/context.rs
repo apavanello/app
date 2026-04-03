@@ -1,6 +1,8 @@
-use super::engine::shared_backend;
+use super::engine::using_rocm_backend;
+use super::offload::{
+    compute_recommended_context_for_gpu_layers, load_model_metadata, plan_smart_gpu_offload,
+};
 use super::*;
-use llama_cpp_2::model::params::LlamaModelParams;
 use llama_cpp_sys_2::{
     ggml_backend_dev_count, ggml_backend_dev_get, ggml_backend_dev_memory, ggml_backend_dev_type,
     GGML_BACKEND_DEVICE_TYPE_ACCEL, GGML_BACKEND_DEVICE_TYPE_GPU, GGML_BACKEND_DEVICE_TYPE_IGPU,
@@ -433,6 +435,7 @@ pub(crate) async fn llamacpp_context_info(
     model_path: String,
     llama_offload_kqv: Option<bool>,
     llama_kv_type: Option<String>,
+    llama_gpu_layers: Option<u32>,
 ) -> Result<LlamaCppContextInfo, String> {
     let _ = app;
     if model_path.trim().is_empty() {
@@ -450,28 +453,42 @@ pub(crate) async fn llamacpp_context_info(
         ));
     }
 
-    let backend = shared_backend()?;
-    let model = LlamaModel::load_from_file(
-        backend.as_ref(),
-        &model_path,
-        &LlamaModelParams::default().with_n_gpu_layers(0),
-    )
-    .map_err(|e| {
-        crate::utils::err_msg(
-            module_path!(),
-            line!(),
-            format!("Failed to load llama model for context info: {e}"),
-        )
-    })?;
-    let max_ctx = model.n_ctx_train().max(1);
+    let metadata = load_model_metadata(&model_path)?;
+    let max_ctx = metadata.max_context_length.max(1);
     let available_memory_bytes = get_available_memory_bytes();
     let available_vram_bytes = get_available_vram_bytes();
-    let recommended_context_length = compute_recommended_context(
-        &model,
+    let resolved_offload_kqv = if llama_offload_kqv.is_some() {
+        llama_offload_kqv
+    } else if using_rocm_backend() {
+        Some(false)
+    } else {
+        None
+    };
+    let resolved_gpu_layers = if let Some(requested) = llama_gpu_layers {
+        requested.min(metadata.layer_count.max(1))
+    } else {
+        let flash_attention_policy = if using_rocm_backend() {
+            llama_cpp_sys_2::LLAMA_FLASH_ATTN_TYPE_DISABLED
+        } else {
+            llama_cpp_sys_2::LLAMA_FLASH_ATTN_TYPE_AUTO
+        };
+        plan_smart_gpu_offload(
+            &model_path,
+            available_memory_bytes,
+            available_vram_bytes,
+            None,
+            resolved_offload_kqv,
+            llama_kv_type.as_deref(),
+            flash_attention_policy,
+        )?
+        .estimated_gpu_layers
+    };
+    let recommended_context_length = compute_recommended_context_for_gpu_layers(
+        &metadata,
         available_memory_bytes,
         available_vram_bytes,
-        max_ctx,
-        llama_offload_kqv,
+        resolved_gpu_layers,
+        resolved_offload_kqv,
         llama_kv_type.as_deref(),
     );
 
@@ -480,7 +497,7 @@ pub(crate) async fn llamacpp_context_info(
         recommended_context_length,
         available_memory_bytes,
         available_vram_bytes,
-        model_size_bytes: Some(model.size()),
-        layer_count: Some(model.n_layer()),
+        model_size_bytes: Some(metadata.model_size_bytes),
+        layer_count: Some(metadata.layer_count),
     })
 }

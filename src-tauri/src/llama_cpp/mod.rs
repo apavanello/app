@@ -64,7 +64,7 @@ mod desktop {
         emit_model_load_complete, emit_model_load_failed, emit_model_load_finalizing, load_engine,
         using_rocm_backend,
     };
-    use offload::plan_smart_gpu_offload;
+    use offload::{context_bucket_upper, merge_cached_candidate_layers, plan_smart_gpu_offload};
     use prompt::{
         add_bos_label, build_prompt, inject_media_markers, model_tokenizer_add_bos_label,
         model_tokenizer_adds_bos, prompt_add_bos_reason, prompt_mode_label, resolve_prompt_add_bos,
@@ -781,9 +781,13 @@ mod desktop {
             let available_vram_bytes = get_available_vram_bytes();
             let mut effective_gpu_layers = llama_gpu_layers;
             let mut smart_gpu_layer_candidates: Option<Vec<u32>> = None;
+            let cached_runtime_report =
+                crate::storage_manager::models::model_get_llama_runtime_report(&app, model_path)
+                    .ok()
+                    .flatten();
 
             if llama_gpu_layers.is_none() && !llama_strict_mode {
-                let smart_offload_plan = plan_smart_gpu_offload(
+                let mut smart_offload_plan = plan_smart_gpu_offload(
                     model_path,
                     available_memory_bytes,
                     available_vram_bytes,
@@ -792,6 +796,71 @@ mod desktop {
                     llama_kv_type_raw.as_deref(),
                     resolved_flash_attention_policy,
                 )?;
+                let current_context_bucket =
+                    context_bucket_upper(smart_offload_plan.planned_context.max(1));
+                if let Some(report) = cached_runtime_report.as_ref() {
+                    let cached_gpu_layers = report
+                        .get("actualGpuLayersUsed")
+                        .and_then(|value| value.as_u64())
+                        .and_then(|value| u32::try_from(value).ok())
+                        .filter(|value| *value > 0);
+                    let cached_backend_path = report
+                        .get("backendPathUsed")
+                        .and_then(|value| value.as_str());
+                    let cached_status = report.get("status").and_then(|value| value.as_str());
+                    let cached_context_bucket = report
+                        .get("requestedContext")
+                        .and_then(|value| value.as_u64())
+                        .and_then(|value| u32::try_from(value).ok())
+                        .or_else(|| {
+                            report
+                                .get("smartOffloadPlannedContext")
+                                .and_then(|value| value.as_u64())
+                                .and_then(|value| u32::try_from(value).ok())
+                        })
+                        .or_else(|| {
+                            report
+                                .get("actualContextUsed")
+                                .and_then(|value| value.as_u64())
+                                .and_then(|value| u32::try_from(value).ok())
+                        })
+                        .map(context_bucket_upper);
+
+                    if let (Some(cached_layers), Some(bucket)) =
+                        (cached_gpu_layers, cached_context_bucket)
+                    {
+                        if cached_status == Some("succeeded")
+                            && cached_backend_path == Some("gpu_offload")
+                            && bucket == current_context_bucket
+                        {
+                            let merged_candidates = merge_cached_candidate_layers(
+                                smart_offload_plan.total_layers,
+                                cached_layers,
+                                &smart_offload_plan.candidate_gpu_layers,
+                            );
+                            log_info(
+                                &app,
+                                "llama_cpp",
+                                format!(
+                                    "smart gpu offload cache hit: context_bucket={} cached_gpu_layers={} merged_candidates={:?}",
+                                    current_context_bucket, cached_layers, merged_candidates
+                                ),
+                            );
+                            update_runtime_report_field(
+                                &mut runtime_report,
+                                "smartOffloadCacheHit",
+                                json!(true),
+                            );
+                            update_runtime_report_field(
+                                &mut runtime_report,
+                                "smartOffloadCachedGpuLayers",
+                                json!(cached_layers),
+                            );
+                            smart_offload_plan.candidate_gpu_layers = merged_candidates;
+                            smart_offload_plan.estimated_gpu_layers = cached_layers;
+                        }
+                    }
+                }
                 effective_gpu_layers = smart_offload_plan.candidate_gpu_layers.first().copied();
                 smart_gpu_layer_candidates = Some(smart_offload_plan.candidate_gpu_layers.clone());
                 update_runtime_report_field(
@@ -821,6 +890,11 @@ mod desktop {
                 );
                 update_runtime_report_field(
                     &mut runtime_report,
+                    "smartOffloadPlanningKqvMode",
+                    json!(smart_offload_plan.planning_offload_kqv),
+                );
+                update_runtime_report_field(
+                    &mut runtime_report,
                     "smartOffloadEstimatedKvBytes",
                     json!(smart_offload_plan.estimated_kv_bytes),
                 );
@@ -838,11 +912,12 @@ mod desktop {
                     &app,
                     "llama_cpp",
                     format!(
-                        "smart gpu offload plan: total_layers={} planned_ctx={} estimated_gpu_layers={} candidates={:?} reserve_kqv_vram={} kv_bytes={} runtime_reserve_bytes={} effective_vram_budget_bytes={}",
+                        "smart gpu offload plan: total_layers={} planned_ctx={} estimated_gpu_layers={} candidates={:?} planning_offload_kqv={:?} reserve_kqv_vram={} kv_bytes={} runtime_reserve_bytes={} effective_vram_budget_bytes={}",
                         smart_offload_plan.total_layers,
                         smart_offload_plan.planned_context,
                         smart_offload_plan.estimated_gpu_layers,
                         smart_offload_plan.candidate_gpu_layers,
+                        smart_offload_plan.planning_offload_kqv,
                         smart_offload_plan.kqv_vram_reserved,
                         smart_offload_plan.estimated_kv_bytes,
                         smart_offload_plan.estimated_runtime_reserve_bytes,
@@ -1173,10 +1248,22 @@ mod desktop {
                 ));
             }
 
+            let preferred_offload_kqv = if let Some(explicit) = llama_offload_kqv {
+                Some(explicit)
+            } else if using_rocm_backend() {
+                // Conservative ROCm default to avoid driver/device crashes on some AMD stacks.
+                Some(false)
+            } else if engine.supports_gpu_offload {
+                Some(true)
+            } else {
+                Some(false)
+            };
             let requested_ctx_size = ctx_size;
             let initial_batch = ctx_size.min(llama_batch_size).max(1);
             let mut resolved_ctx_size = ctx_size;
             let mut resolved_n_batch = initial_batch;
+            let mut resolved_offload_kqv = preferred_offload_kqv;
+            let mut kqv_fallback_activated = false;
             let mut context_failures = Vec::new();
             let context_attempts = if llama_strict_mode {
                 vec![(ctx_size, initial_batch)]
@@ -1188,90 +1275,152 @@ mod desktop {
                     llama_batch_size,
                 )
             };
+            let same_ctx_attempts: Vec<(u32, u32)> = context_attempts
+                .iter()
+                .copied()
+                .filter(|(attempt_ctx, _)| *attempt_ctx == requested_ctx_size)
+                .collect();
+            let reduced_ctx_attempts: Vec<(u32, u32)> = context_attempts
+                .iter()
+                .copied()
+                .filter(|(attempt_ctx, _)| *attempt_ctx != requested_ctx_size)
+                .collect();
+            let can_fallback_kqv_to_ram = !llama_strict_mode && preferred_offload_kqv == Some(true);
+            let mut attempt_groups: Vec<(Option<bool>, Vec<(u32, u32)>)> = Vec::new();
+            if !same_ctx_attempts.is_empty() {
+                attempt_groups.push((preferred_offload_kqv, same_ctx_attempts.clone()));
+                if can_fallback_kqv_to_ram {
+                    attempt_groups.push((Some(false), same_ctx_attempts.clone()));
+                }
+            }
+            if !reduced_ctx_attempts.is_empty() {
+                attempt_groups.push((
+                    if can_fallback_kqv_to_ram {
+                        Some(false)
+                    } else {
+                        preferred_offload_kqv
+                    },
+                    reduced_ctx_attempts,
+                ));
+            }
             let mut ctx: Option<_> = None;
             failure_stage = "create_context";
 
-            for (attempt_ctx, attempt_batch) in context_attempts {
-                let mut ctx_params = LlamaContextParams::default()
-                    .with_n_ctx(NonZeroU32::new(attempt_ctx))
-                    .with_n_batch(attempt_batch);
-                if let Some(n_threads) = llama_threads {
-                    ctx_params = ctx_params.with_n_threads(n_threads as i32);
-                }
-                if let Some(n_threads_batch) = llama_threads_batch {
-                    ctx_params = ctx_params.with_n_threads_batch(n_threads_batch as i32);
-                }
-                if let Some(offload) = resolved_offload_kqv {
-                    ctx_params = ctx_params.with_offload_kqv(offload);
-                }
-                if let Some(kv_type) = llama_kv_type {
-                    ctx_params = ctx_params.with_type_k(kv_type).with_type_v(kv_type);
-                }
-                ctx_params =
-                    ctx_params.with_flash_attention_policy(resolved_flash_attention_policy);
-                if let Some(base) = llama_rope_freq_base {
-                    ctx_params = ctx_params.with_rope_freq_base(base as f32);
-                }
-                if let Some(scale) = llama_rope_freq_scale {
-                    ctx_params = ctx_params.with_rope_freq_scale(scale as f32);
+            'context_attempt_groups: for (group_index, (attempt_offload_kqv, attempts)) in
+                attempt_groups.into_iter().enumerate()
+            {
+                if group_index > 0
+                    && preferred_offload_kqv == Some(true)
+                    && attempt_offload_kqv == Some(false)
+                {
+                    log_warn(
+                        &app,
+                        "llama_cpp",
+                        format!(
+                            "Requested context did not fit with GPU KQV offload; retrying with KV cache on RAM (requested_ctx={}, initial_batch={})",
+                            requested_ctx_size, initial_batch
+                        ),
+                    );
                 }
 
-                log_info(
-                    &app,
-                    "llama_cpp",
-                    format!(
-                        "creating context attempt: ctx={} batch={} gpu_layers={:?} offload_kqv={:?} flash_attention_policy={:?}",
-                        attempt_ctx,
-                        attempt_batch,
-                        actual_gpu_layers_used,
-                        resolved_offload_kqv,
-                        resolved_flash_attention_policy
-                    ),
-                );
-
-                match model.new_context(backend, ctx_params) {
-                    Ok(created) => {
-                        resolved_ctx_size = attempt_ctx;
-                        resolved_n_batch = attempt_batch;
-                        if (attempt_ctx, attempt_batch) != (ctx_size, initial_batch) {
-                            log_warn(
-                                &app,
-                                "llama_cpp",
-                                format!(
-                                    "context fallback activated: requested ctx={} batch={} -> using ctx={} batch={}",
-                                    ctx_size, initial_batch, attempt_ctx, attempt_batch
-                                ),
-                            );
-                        }
-                        ctx = Some(created);
-                        break;
+                for (attempt_ctx, attempt_batch) in attempts {
+                    let mut ctx_params = LlamaContextParams::default()
+                        .with_n_ctx(NonZeroU32::new(attempt_ctx))
+                        .with_n_batch(attempt_batch);
+                    if let Some(n_threads) = llama_threads {
+                        ctx_params = ctx_params.with_n_threads(n_threads as i32);
                     }
-                    Err(err) => {
-                        let raw_error = err.to_string();
-                        let detail = context_error_detail(
-                            &raw_error,
+                    if let Some(n_threads_batch) = llama_threads_batch {
+                        ctx_params = ctx_params.with_n_threads_batch(n_threads_batch as i32);
+                    }
+                    if let Some(offload) = attempt_offload_kqv {
+                        ctx_params = ctx_params.with_offload_kqv(offload);
+                    }
+                    if let Some(kv_type) = llama_kv_type {
+                        ctx_params = ctx_params.with_type_k(kv_type).with_type_v(kv_type);
+                    }
+                    ctx_params =
+                        ctx_params.with_flash_attention_policy(resolved_flash_attention_policy);
+                    if let Some(base) = llama_rope_freq_base {
+                        ctx_params = ctx_params.with_rope_freq_base(base as f32);
+                    }
+                    if let Some(scale) = llama_rope_freq_scale {
+                        ctx_params = ctx_params.with_rope_freq_scale(scale as f32);
+                    }
+
+                    log_info(
+                        &app,
+                        "llama_cpp",
+                        format!(
+                            "creating context attempt: ctx={} batch={} gpu_layers={:?} offload_kqv={:?} flash_attention_policy={:?}",
                             attempt_ctx,
                             attempt_batch,
-                            resolved_offload_kqv,
-                            llama_offload_kqv,
-                            recommended_ctx,
-                            llama_kv_type_raw.as_deref(),
-                        );
+                            actual_gpu_layers_used,
+                            attempt_offload_kqv,
+                            resolved_flash_attention_policy
+                        ),
+                    );
 
-                        let has_explicit_kv = llama_kv_type_raw.is_some();
-                        let likely_oom = is_likely_context_oom_error(&raw_error);
-                        if has_explicit_kv || !likely_oom {
-                            return Err(crate::utils::err_msg(
-                                module_path!(),
-                                line!(),
-                                format!("Failed to create llama context: {detail}"),
+                    match model.new_context(backend, ctx_params) {
+                        Ok(created) => {
+                            resolved_ctx_size = attempt_ctx;
+                            resolved_n_batch = attempt_batch;
+                            resolved_offload_kqv = attempt_offload_kqv;
+                            kqv_fallback_activated = preferred_offload_kqv == Some(true)
+                                && attempt_offload_kqv == Some(false);
+                            if kqv_fallback_activated {
+                                log_warn(
+                                    &app,
+                                    "llama_cpp",
+                                    format!(
+                                        "KQV GPU offload fallback activated: preserving ctx={} with KV cache on RAM",
+                                        attempt_ctx
+                                    ),
+                                );
+                            }
+                            if (attempt_ctx, attempt_batch) != (ctx_size, initial_batch) {
+                                log_warn(
+                                    &app,
+                                    "llama_cpp",
+                                    format!(
+                                        "context fallback activated: requested ctx={} batch={} -> using ctx={} batch={}",
+                                        ctx_size, initial_batch, attempt_ctx, attempt_batch
+                                    ),
+                                );
+                            }
+                            ctx = Some(created);
+                            break 'context_attempt_groups;
+                        }
+                        Err(err) => {
+                            let raw_error = err.to_string();
+                            let detail = context_error_detail(
+                                &raw_error,
+                                attempt_ctx,
+                                attempt_batch,
+                                attempt_offload_kqv,
+                                llama_offload_kqv,
+                                recommended_ctx,
+                                llama_kv_type_raw.as_deref(),
+                            );
+
+                            let has_explicit_kv = llama_kv_type_raw.is_some();
+                            let likely_oom = is_likely_context_oom_error(&raw_error);
+                            if has_explicit_kv || !likely_oom {
+                                return Err(crate::utils::err_msg(
+                                    module_path!(),
+                                    line!(),
+                                    format!("Failed to create llama context: {detail}"),
+                                ));
+                            }
+
+                            context_failures.push(format!(
+                                "ctx={} batch={} offload_kqv={} -> {}",
+                                attempt_ctx,
+                                attempt_batch,
+                                offload_kqv_mode_label(attempt_offload_kqv),
+                                detail
                             ));
                         }
-
-                        context_failures.push(format!(
-                            "ctx={} batch={} -> {}",
-                            attempt_ctx, attempt_batch, detail
-                        ));
                     }
                 }
             }
@@ -1295,6 +1444,16 @@ mod desktop {
             let n_batch = resolved_n_batch;
             let context_fallback_activated =
                 (ctx_size, n_batch) != (requested_ctx_size, initial_batch);
+            if kqv_fallback_activated {
+                let _ = app.emit(
+                    "app://toast",
+                    json!({
+                        "variant": "warning",
+                        "title": "KV cache moved to RAM",
+                        "description": "Requested context did not fit with GPU KV offload. Continued with RAM-backed KV cache."
+                    }),
+                );
+            }
             let applied_template_source = built_prompt.applied_template_source.clone();
             let applied_template_text = built_prompt.applied_template_text.clone();
             let attempted_template_source = built_prompt.attempted_template_source.clone();
@@ -1339,6 +1498,7 @@ mod desktop {
                     "strictModeEnabled": llama_strict_mode,
                     "gpuLoadFallbackActivated": gpu_load_fallback_activated,
                     "smartGpuLayerFallbackActivated": engine.smart_gpu_layer_fallback_activated,
+                    "kqvFallbackActivated": kqv_fallback_activated,
                     "contextFallbackActivated": context_fallback_activated,
                     "mmprojPath": llama_mmproj_path,
                     "visionRequested": vision_requested,
@@ -1357,6 +1517,11 @@ mod desktop {
                 &mut runtime_report,
                 "actualOffloadKqvMode",
                 json!(offload_kqv_mode_label(resolved_offload_kqv)),
+            );
+            update_runtime_report_field(
+                &mut runtime_report,
+                "kqvFallbackActivated",
+                json!(kqv_fallback_activated),
             );
             update_runtime_report_field(
                 &mut runtime_report,
@@ -1382,7 +1547,7 @@ mod desktop {
                 &app,
                 "llama_cpp",
                 format!(
-                    "llama runtime resolved: prompt_mode={} template_source={} fallback_prompt={} bos={} ctx={} n_batch={} gpu_layers={:?} kv_type={} offload_kqv={} backend_path={} flash_attention={} smart_gpu_fallback={} context_fallback={}",
+                    "llama runtime resolved: prompt_mode={} template_source={} fallback_prompt={} bos={} ctx={} n_batch={} gpu_layers={:?} kv_type={} offload_kqv={} backend_path={} flash_attention={} smart_gpu_fallback={} kqv_fallback={} context_fallback={}",
                     prompt_mode_label(built_prompt.prompt_mode),
                     built_prompt
                         .applied_template_source
@@ -1398,6 +1563,7 @@ mod desktop {
                     backend_path_used,
                     flash_attention_policy_label(resolved_flash_attention_policy),
                     engine.smart_gpu_layer_fallback_activated,
+                    kqv_fallback_activated,
                     context_fallback_activated,
                 ),
             );
@@ -2043,7 +2209,8 @@ mod desktop {
             );
             persist_runtime_report(&app, model_path, Some(&runtime_report));
         } else {
-            persist_runtime_report(&app, model_path, None);
+            update_runtime_report_field(&mut runtime_report, "status", json!("succeeded"));
+            persist_runtime_report(&app, model_path, Some(&runtime_report));
         }
 
         if stream {
@@ -2191,6 +2358,7 @@ pub async fn llamacpp_context_info(
     model_path: String,
     llama_offload_kqv: Option<bool>,
     llama_kv_type: Option<String>,
+    llama_gpu_layers: Option<u32>,
 ) -> Result<serde_json::Value, String> {
     #[cfg(not(mobile))]
     {
@@ -2199,6 +2367,7 @@ pub async fn llamacpp_context_info(
             model_path,
             llama_offload_kqv,
             llama_kv_type,
+            llama_gpu_layers,
         )
         .await?;
         return serde_json::to_value(info).map_err(|e| {
@@ -2215,6 +2384,7 @@ pub async fn llamacpp_context_info(
         let _ = model_path;
         let _ = llama_offload_kqv;
         let _ = llama_kv_type;
+        let _ = llama_gpu_layers;
         Err(crate::utils::err_msg(
             module_path!(),
             line!(),

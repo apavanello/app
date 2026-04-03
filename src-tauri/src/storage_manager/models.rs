@@ -62,6 +62,36 @@ pub fn model_set_llama_runtime_report(
     Ok(true)
 }
 
+pub fn model_get_llama_runtime_report(
+    app: &tauri::AppHandle,
+    model_path: &str,
+) -> Result<Option<JsonValue>, String> {
+    let conn = open_db(app)?;
+    let advanced_json: Option<String> = conn
+        .query_row(
+            "SELECT advanced_model_settings
+             FROM models
+             WHERE provider_id = 'llamacpp' AND name = ?1
+             ORDER BY created_at DESC
+             LIMIT 1",
+            params![model_path],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+
+    let Some(advanced_json) = advanced_json else {
+        return Ok(None);
+    };
+
+    let advanced_value = serde_json::from_str::<JsonValue>(&advanced_json)
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    Ok(advanced_value
+        .get("llamaLastRuntimeReport")
+        .cloned()
+        .filter(|value| !value.is_null()))
+}
+
 #[tauri::command]
 pub fn model_upsert(app: tauri::AppHandle, model_json: String) -> Result<String, String> {
     let conn = open_db(&app)?;
