@@ -24,7 +24,7 @@ export const enMessages = {
       systemPrompts: "System Prompts",
       developer: "Developer",
       advanced: "Advanced",
-      hostApi: "LAN Host API",
+      hostApi: "API Server",
       characters: "Characters",
       lorebooks: "Lorebooks",
       personas: "Personas",

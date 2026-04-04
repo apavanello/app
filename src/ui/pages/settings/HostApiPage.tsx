@@ -274,9 +274,9 @@ export function HostApiPage() {
                       <Server className="h-4 w-4 text-info" />
                     </div>
                     <div>
-                      <span className="text-sm font-medium text-fg">Enable Host API</span>
+                      <span className="text-sm font-medium text-fg">Enable API Server</span>
                       <p className="text-[11px] text-fg/45">
-                        Start an OpenAI-compatible server on your LAN
+                        Start an OpenAI-compatible server on your network
                       </p>
                     </div>
                   </div>

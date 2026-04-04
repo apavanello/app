@@ -700,8 +700,8 @@ export function AdvancedPage() {
         {/* Network Section */}
         <SettingsSection title="Network" icon={<Network size={12} />}>
           <FeatureCard
-            title="LAN Host API"
-            description="Expose models via OpenAI-compatible API on your local network"
+            title="API Server"
+            description="Expose models via an OpenAI-compatible API server"
             detailText={hostApiRunning ? "Server is currently running" : undefined}
             icon={<Network className="h-4 w-4" />}
             enabled={hostApiEnabled}
