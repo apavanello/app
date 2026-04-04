@@ -348,6 +348,7 @@ fn build_oaicompat_prompt(
 fn build_plain_templated_prompt(
     model: &LlamaModel,
     messages: &[Value],
+    chat_messages: &[LlamaChatMessage],
     resolved_template: &ResolvedChatTemplate,
     options: &OpenAICompatPromptOptions,
 ) -> Result<BuiltPrompt, String> {
@@ -376,18 +377,38 @@ fn build_plain_templated_prompt(
         parse_tool_calls: false,
     };
 
-    let chat_template_result = model
-        .apply_chat_template_oaicompat(&resolved_template.template, &params)
-        .map_err(|e| {
-            crate::utils::err_msg(
-                module_path!(),
-                line!(),
-                format!(
-                    "Failed to apply llama chat template from {}: {}",
-                    resolved_template.source_label, e
-                ),
-            )
-        })?;
+    let chat_template_result = match model.apply_chat_template_oaicompat(&resolved_template.template, &params) {
+        Ok(result) => result,
+        Err(oaicompat_err) => {
+            match model.apply_chat_template(&resolved_template.template, chat_messages, true) {
+                Ok(prompt) => {
+                    return Ok(BuiltPrompt {
+                        prompt,
+                        attempted_template_source: Some(resolved_template.source_label.clone()),
+                        attempted_template_text: Some(resolved_template.template_text.clone()),
+                        applied_template_source: Some(resolved_template.source_label.clone()),
+                        applied_template_text: Some(resolved_template.template_text.clone()),
+                        resolved_tool_choice: None,
+                        used_raw_completion_fallback: false,
+                        raw_completion_fallback_reason: None,
+                        prompt_mode: PromptMode::TemplatedChat,
+                        chat_template_result: None,
+                        additional_stop_sequences: Vec::new(),
+                    });
+                }
+                Err(legacy_err) => {
+                    return Err(crate::utils::err_msg(
+                        module_path!(),
+                        line!(),
+                        format!(
+                            "Failed to apply llama chat template from {} via oaicompat ({}) and legacy ({})",
+                            resolved_template.source_label, oaicompat_err, legacy_err
+                        ),
+                    ));
+                }
+            }
+        }
+    };
 
     Ok(BuiltPrompt {
         prompt: chat_template_result.prompt.clone(),
@@ -553,7 +574,13 @@ pub(super) fn build_prompt(
         );
     }
 
-    match build_plain_templated_prompt(model, messages, &resolved_template, options) {
+    match build_plain_templated_prompt(
+        model,
+        messages,
+        &chat_messages,
+        &resolved_template,
+        options,
+    ) {
         Ok(built_prompt) => Ok(built_prompt),
         Err(err) => {
             if allow_raw_completion_fallback {
