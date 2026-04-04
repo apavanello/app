@@ -110,7 +110,7 @@ export function ModelsPage() {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const { toNewModel, toEditModel } = useNavigationManager();
   const {
-    state: { providers, models, defaultModelId },
+    state: { providers, models, defaultModelId, loading },
     handleSetDefault,
     handleDelete,
   } = useModelsController();
@@ -360,7 +360,7 @@ export function ModelsPage() {
       />
       {/* List (TopNav handles title/back) */}
       <div className="flex-1 overflow-y-auto mx-3 py-3 space-y-3">
-        {models.length === 0 && <EmptyState onCreate={() => toNewModel()} />}
+        {!loading && models.length === 0 && <EmptyState onCreate={() => toNewModel()} />}
 
         {/* Active/completed downloads from HuggingFace browser */}
         <ModelsDownloadIndicator />

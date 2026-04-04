@@ -435,6 +435,14 @@ function hasDynamicMemoryState(
   );
 }
 
+/**
+ * Return the last successfully loaded settings snapshot, or null if none exists yet.
+ * Use this to render immediately on page mount, then call readSettings() to refresh.
+ */
+export function readSettingsCached(): Settings | null {
+  return lastKnownGoodSettings ? cloneSettingsSnapshot(lastKnownGoodSettings) : null;
+}
+
 export async function readSettings(): Promise<Settings> {
   const fallback = lastKnownGoodSettings
     ? cloneSettingsSnapshot(lastKnownGoodSettings)

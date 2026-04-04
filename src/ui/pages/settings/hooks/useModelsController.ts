@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import {
   LLAMA_RUNTIME_REPORT_UPDATED_EVENT,
   readSettings,
+  readSettingsCached,
   removeModel,
   setDefaultModel,
   SETTINGS_UPDATED_EVENT,
@@ -16,8 +17,21 @@ type ControllerReturn = {
   handleDelete: (modelId: string) => Promise<void>;
 };
 
+function getInitialState(): ModelsState {
+  const cached = readSettingsCached();
+  if (cached) {
+    return {
+      providers: cached.providerCredentials,
+      models: cached.models,
+      defaultModelId: cached.defaultModelId ?? null,
+      loading: false,
+    };
+  }
+  return initialModelsState;
+}
+
 export function useModelsController(): ControllerReturn {
-  const [state, dispatch] = useReducer(modelsReducer, initialModelsState);
+  const [state, dispatch] = useReducer(modelsReducer, undefined, getInitialState);
 
   const reload = useCallback(async () => {
     try {

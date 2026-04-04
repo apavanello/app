@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { startTransition, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 /**
@@ -226,13 +226,17 @@ export function useNavigationManager() {
 
   const go = useCallback(
     (path: string, options?: NavOptions) => {
-      navigate(path, { replace: options?.replace });
+      startTransition(() => {
+        navigate(path, { replace: options?.replace });
+      });
     },
     [navigate],
   );
 
   const back = useCallback(() => {
-    navigate(-1);
+    startTransition(() => {
+      navigate(-1);
+    });
   }, [navigate]);
 
   /**

@@ -52,6 +52,7 @@ export function ProvidersPage() {
       validationError,
       capabilities,
       engineSetupResult,
+      loading,
     },
     openEditor,
     closeEditor,
@@ -153,7 +154,7 @@ export function ProvidersPage() {
             tabIndex={0}
             className="space-y-2"
           >
-            {providers.length === 0 && <EmptyState onCreate={() => openEditor()} />}
+            {!loading && providers.length === 0 && <EmptyState onCreate={() => openEditor()} />}
             {providers.map((provider) => {
               const cap: ProviderCapabilitiesCamel | undefined = capabilities.find(
                 (p) => p.id === provider.providerId,

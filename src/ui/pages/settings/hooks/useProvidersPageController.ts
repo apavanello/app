@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import {
   readSettings,
+  readSettingsCached,
   addOrUpdateProviderCredential,
   removeProviderCredential,
   SETTINGS_UPDATED_EVENT,
@@ -42,8 +43,23 @@ type ControllerReturn = {
   dismissEngineSetup: () => void;
 };
 
+function getInitialProvidersState(): ProvidersPageState {
+  const cached = readSettingsCached();
+  if (cached) {
+    const visibleProviders = cached.providerCredentials.filter(
+      (provider) => provider.providerId !== "llamacpp",
+    );
+    return {
+      ...initialProvidersPageState,
+      providers: visibleProviders,
+      loading: false,
+    };
+  }
+  return initialProvidersPageState;
+}
+
 export function useProvidersPageController(): ControllerReturn {
-  const [state, dispatch] = useReducer(providersPageReducer, initialProvidersPageState);
+  const [state, dispatch] = useReducer(providersPageReducer, undefined, getInitialProvidersState);
   const isMobile = getPlatform().type === "mobile";
 
   const reload = useCallback(async () => {
