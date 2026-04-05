@@ -79,11 +79,11 @@ const THEME_STYLES: Record<
   },
   dark: {
     input:
-      "w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 pl-10 text-sm text-white placeholder-white/40 focus:border-white/20 focus:outline-none",
-    icon: "text-white/40",
-    idleItem: "border-white/10 bg-white/5 hover:bg-white/10",
-    primaryText: "text-white",
-    secondaryText: "text-white/40",
+      "w-full rounded-xl border border-fg/12 bg-surface-el/45 px-4 py-2.5 pl-10 text-sm text-fg placeholder-fg/40 focus:border-fg/20 focus:outline-none",
+    icon: "text-fg/40",
+    idleItem: "border-fg/12 bg-fg/6 hover:bg-fg/10",
+    primaryText: "text-fg",
+    secondaryText: "text-fg/40",
   },
 };
 

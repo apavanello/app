@@ -316,7 +316,7 @@ export function ProvidersPage() {
                       });
                       setValidationError(null);
                     }}
-                    className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgfocus:border-fg/30 focus:outline-none"
+                    className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg focus:border-fg/30 focus:outline-none"
                   >
                     {visibleCapabilities.map((p) => (
                       <option key={p.id} value={p.id} className="bg-surface-el">
@@ -332,7 +332,7 @@ export function ProvidersPage() {
                     value={editorProvider.label}
                     onChange={(e) => updateEditorProvider({ label: e.target.value })}
                     placeholder={`My ${visibleCapabilities.find((p) => p.id === editorProvider.providerId)?.name || "Provider"}`}
-                    className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgplaceholder-fg/40 focus:border-fg/30 focus:outline-none"
+                    className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
                   />
                 </div>
                 {showApiKeyInput && (
@@ -346,7 +346,7 @@ export function ProvidersPage() {
                         if (validationError) setValidationError(null);
                       }}
                       placeholder="Enter your API key"
-                      className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgplaceholder-fg/40 focus:border-fg/30 focus:outline-none"
+                      className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
                     />
                   </div>
                 )}
@@ -373,7 +373,7 @@ export function ProvidersPage() {
                                 ? "http://localhost:11434"
                                 : "https://api.provider.com"
                       }
-                      className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgplaceholder-fg/40 focus:border-fg/30 focus:outline-none"
+                      className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
                     />
                   </div>
                 )}
@@ -390,7 +390,7 @@ export function ProvidersPage() {
                         if (validationError) setValidationError(null);
                       }}
                       placeholder="Bearer token for auth"
-                      className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgplaceholder-fg/40 focus:border-fg/30 focus:outline-none"
+                      className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
                     />
                   </div>
                 )}
@@ -452,7 +452,7 @@ export function ProvidersPage() {
                           })
                         }
                         placeholder="/v1/chat/completions"
-                        className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgplaceholder-fg/40 focus:border-fg/30 focus:outline-none"
+                        className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
                       />
                     </div>
                     <div className="rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2">
@@ -507,7 +507,7 @@ export function ProvidersPage() {
                             },
                           })
                         }
-                        className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgfocus:border-fg/30 focus:outline-none"
+                        className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg focus:border-fg/30 focus:outline-none"
                       >
                         <option value="bearer" className="bg-surface-el">
                           Bearer Token
@@ -538,7 +538,7 @@ export function ProvidersPage() {
                               },
                             })
                           }
-                          className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgfocus:border-fg/30 focus:outline-none"
+                          className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg focus:border-fg/30 focus:outline-none"
                         >
                           <option value="auto" className="bg-surface-el">
                             Auto
@@ -572,7 +572,7 @@ export function ProvidersPage() {
                             })
                           }
                           placeholder="x-api-key"
-                          className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgplaceholder-fg/40 focus:border-fg/30 focus:outline-none"
+                          className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
                         />
                       </div>
                     )}
@@ -595,7 +595,7 @@ export function ProvidersPage() {
                             })
                           }
                           placeholder="api_key"
-                          className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgplaceholder-fg/40 focus:border-fg/30 focus:outline-none"
+                          className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
                         />
                       </div>
                     )}
@@ -617,7 +617,7 @@ export function ProvidersPage() {
                               })
                             }
                             placeholder="/v1/models"
-                            className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgplaceholder-fg/40 focus:border-fg/30 focus:outline-none"
+                            className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
                           />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
@@ -637,7 +637,7 @@ export function ProvidersPage() {
                                 })
                               }
                               placeholder="data"
-                              className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgplaceholder-fg/40 focus:border-fg/30 focus:outline-none"
+                              className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
                             />
                           </div>
                           <div>
@@ -656,7 +656,7 @@ export function ProvidersPage() {
                                 })
                               }
                               placeholder="id"
-                              className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgplaceholder-fg/40 focus:border-fg/30 focus:outline-none"
+                              className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
                             />
                           </div>
                         </div>
@@ -679,7 +679,7 @@ export function ProvidersPage() {
                                 })
                               }
                               placeholder="name"
-                              className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgplaceholder-fg/40 focus:border-fg/30 focus:outline-none"
+                              className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
                             />
                           </div>
                           <div>
@@ -701,7 +701,7 @@ export function ProvidersPage() {
                                 })
                               }
                               placeholder="description"
-                              className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgplaceholder-fg/40 focus:border-fg/30 focus:outline-none"
+                              className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
                             />
                           </div>
                         </div>
@@ -723,7 +723,7 @@ export function ProvidersPage() {
                               })
                             }
                             placeholder="context_length"
-                            className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgplaceholder-fg/40 focus:border-fg/30 focus:outline-none"
+                            className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
                           />
                         </div>
                       </>
@@ -741,7 +741,7 @@ export function ProvidersPage() {
                           })
                         }
                         placeholder="system"
-                        className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgplaceholder-fg/40 focus:border-fg/30 focus:outline-none"
+                        className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
@@ -758,7 +758,7 @@ export function ProvidersPage() {
                             })
                           }
                           placeholder="user"
-                          className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgplaceholder-fg/40 focus:border-fg/30 focus:outline-none"
+                          className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
                         />
                       </div>
                       <div>
@@ -774,7 +774,7 @@ export function ProvidersPage() {
                             })
                           }
                           placeholder="assistant"
-                          className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fgplaceholder-fg/40 focus:border-fg/30 focus:outline-none"
+                          className="w-full rounded-lg border border-fg/10 bg-surface-el/20 px-3 py-2 text-sm text-fg placeholder-fg/40 focus:border-fg/30 focus:outline-none"
                         />
                       </div>
                     </div>
