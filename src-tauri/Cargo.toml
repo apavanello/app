@@ -60,6 +60,7 @@ tauri-plugin-process = "2"
 tokio = { version = "1", features = ["full"] }
 chrono = "0.4"
 regex = "1"
+quick-xml = "0.38.4"
 image = { version = "0.25", default-features = false, features = ["webp", "png", "jpeg"] }
 rusqlite = { version = "0.31", features = ["bundled", "backup", "trace"] }
 r2d2 = "0.8"

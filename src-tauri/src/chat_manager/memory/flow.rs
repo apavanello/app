@@ -1,4 +1,4 @@
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 
 use rusqlite::{params, OptionalExtension};
@@ -19,6 +19,10 @@ use super::dynamic::{
     enforce_hot_memory_budget, ensure_pinned_hot, generate_memory_id, normalize_query_text,
     search_cold_memory_indices_by_keyword, select_relevant_memory_indices,
     select_top_cosine_memory_indices, trim_memories_to_max,
+};
+use super::structured_fallback::{
+    parse_memory_operations_from_text, parse_memory_tag_repairs_from_text,
+    MEMORY_OPERATIONS_XML_FALLBACK_PROMPT, MEMORY_REPAIRS_XML_FALLBACK_PROMPT,
 };
 use crate::chat_manager::execution::{
     find_model_with_credential, prepare_default_sampling_request,
@@ -1237,76 +1241,6 @@ fn validate_memory_text(memory: &str) -> Result<String, String> {
     Ok(normalized)
 }
 
-fn extract_json_value_from_text(raw: &str) -> Option<Value> {
-    let normalized = normalize_llm_output_text(raw);
-    if let Ok(value) = serde_json::from_str::<Value>(&normalized) {
-        return Some(value);
-    }
-
-    let candidates = [
-        (normalized.find('{'), normalized.rfind('}')),
-        (normalized.find('['), normalized.rfind(']')),
-    ];
-
-    for (start, end) in candidates {
-        if let (Some(start_idx), Some(end_idx)) = (start, end) {
-            if start_idx <= end_idx {
-                let snippet = &normalized[start_idx..=end_idx];
-                if let Ok(value) = serde_json::from_str::<Value>(snippet) {
-                    return Some(value);
-                }
-            }
-        }
-    }
-
-    None
-}
-
-fn tool_call_from_json_operation(operation: &Value, index: usize) -> Result<ToolCall, String> {
-    let object = operation
-        .as_object()
-        .ok_or_else(|| format!("operation {} was not an object", index))?;
-    let name = object
-        .get("name")
-        .or_else(|| object.get("op"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| format!("operation {} missing name", index))?;
-
-    let mut args = Map::new();
-    for (key, value) in object {
-        if key == "name" || key == "op" {
-            continue;
-        }
-        args.insert(key.clone(), value.clone());
-    }
-
-    Ok(ToolCall {
-        id: format!("json_op_{}", index + 1),
-        name,
-        arguments: Value::Object(args),
-        raw_arguments: None,
-    })
-}
-
-fn parse_memory_operations_from_text(raw: &str) -> Result<Vec<ToolCall>, String> {
-    let value = extract_json_value_from_text(raw)
-        .ok_or_else(|| "fallback response did not contain valid JSON".to_string())?;
-
-    let operations = value
-        .get("operations")
-        .or_else(|| value.get("actions"))
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| "fallback JSON missing operations array".to_string())?;
-
-    operations
-        .iter()
-        .enumerate()
-        .map(|(index, item)| tool_call_from_json_operation(item, index))
-        .collect()
-}
-
 fn guess_memory_category(text: &str) -> String {
     let lower = text.to_ascii_lowercase();
 
@@ -1395,30 +1329,6 @@ fn guess_memory_category(text: &str) -> String {
     }
 
     "other".to_string()
-}
-
-fn parse_memory_tag_repairs_from_text(raw: &str) -> Result<HashMap<String, String>, String> {
-    let value = extract_json_value_from_text(raw)
-        .ok_or_else(|| "fallback response did not contain valid JSON".to_string())?;
-    let items = value
-        .get("items")
-        .or_else(|| value.get("repairs"))
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| "fallback JSON missing items array".to_string())?;
-
-    let mut repaired = HashMap::new();
-    for item in items {
-        let Some(text) = item.get("text").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        let Some(category) = item.get("category").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        if ALLOWED_MEMORY_CATEGORIES.contains(&category) {
-            repaired.insert(text.to_string(), category.to_string());
-        }
-    }
-    Ok(repaired)
 }
 
 fn tool_choice_requires_auto(error: &str) -> bool {
@@ -1680,7 +1590,7 @@ async fn run_memory_tool_update(
                 let mut fallback_messages = messages_for_api.clone();
                 fallback_messages.push(json!({
                     "role": "user",
-                    "content": "Return only JSON. Format: {\"operations\":[{\"name\":\"create_memory\",\"text\":\"...\",\"category\":\"plot_event\",\"important\":false},{\"name\":\"delete_memory\",\"text\":\"123456\",\"confidence\":0.9},{\"name\":\"pin_memory\",\"id\":\"123456\"},{\"name\":\"unpin_memory\",\"id\":\"123456\"},{\"name\":\"done\",\"summary\":\"optional note\"}]}. Use an empty operations array when no changes are needed. Do not use markdown."
+                    "content": MEMORY_OPERATIONS_XML_FALLBACK_PROMPT
                 }));
 
                 let api_response = send_dynamic_memory_request(
@@ -1744,7 +1654,7 @@ async fn run_memory_tool_update(
                     let mut fallback_messages = messages_for_api.clone();
                     fallback_messages.push(json!({
                         "role": "user",
-                        "content": "Return only JSON. Format: {\"operations\":[{\"name\":\"create_memory\",\"text\":\"...\",\"category\":\"plot_event\",\"important\":false},{\"name\":\"delete_memory\",\"text\":\"123456\",\"confidence\":0.9},{\"name\":\"pin_memory\",\"id\":\"123456\"},{\"name\":\"unpin_memory\",\"id\":\"123456\"},{\"name\":\"done\",\"summary\":\"optional note\"}]}. Use an empty operations array when no changes are needed. Do not use markdown."
+                        "content": MEMORY_OPERATIONS_XML_FALLBACK_PROMPT
                     }));
                     let api_response = send_dynamic_memory_request(
                         app,
@@ -1810,7 +1720,7 @@ async fn run_memory_tool_update(
             let mut fallback_messages = messages_for_api.clone();
             fallback_messages.push(json!({
                 "role": "user",
-                "content": "Return only JSON. Format: {\"operations\":[{\"name\":\"create_memory\",\"text\":\"...\",\"category\":\"plot_event\",\"important\":false},{\"name\":\"delete_memory\",\"text\":\"123456\",\"confidence\":0.9},{\"name\":\"pin_memory\",\"id\":\"123456\"},{\"name\":\"unpin_memory\",\"id\":\"123456\"},{\"name\":\"done\",\"summary\":\"optional note\"}]}. Use an empty operations array when no changes are needed. Do not use markdown."
+                "content": MEMORY_OPERATIONS_XML_FALLBACK_PROMPT
             }));
             let api_response = send_dynamic_memory_request(
                 app,
@@ -2430,7 +2340,7 @@ async fn run_memory_tag_repair(
         let mut fallback_messages = messages_for_api.clone();
         fallback_messages.push(json!({
             "role": "user",
-            "content": "Return only JSON. Format: {\"items\":[{\"text\":\"...\",\"category\":\"other\"}]}. Use exactly one item per input text. Do not use markdown."
+            "content": MEMORY_REPAIRS_XML_FALLBACK_PROMPT
         }));
         match send_dynamic_memory_request(
             app,
@@ -2450,7 +2360,9 @@ async fn run_memory_tag_repair(
                 if let Some(text) =
                     extract_text(api_response.data(), Some(&provider_cred.provider_id))
                 {
-                    if let Ok(parsed) = parse_memory_tag_repairs_from_text(&text) {
+                    if let Ok(parsed) =
+                        parse_memory_tag_repairs_from_text(&text, ALLOWED_MEMORY_CATEGORIES)
+                    {
                         repaired.extend(parsed);
                     }
                 }
