@@ -60,7 +60,7 @@ import { ProviderParameterSupportInfo } from "../../components/ProviderParameter
 import { LlamaSamplerOrderEditor } from "../../components/LlamaSamplerOrderEditor";
 import { toast } from "../../components/toast";
 import { useModelEditorController } from "./hooks/useModelEditorController";
-import { Routes, useNavigationManager } from "../../navigation";
+import { useNavigationManager } from "../../navigation";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { addOrUpdateModel, readSettingsCached } from "../../../core/storage/repo";
 import type { LlamaLastRuntimeReport, ReasoningSupport } from "../../../core/storage/schemas";
@@ -465,7 +465,7 @@ export function EditModelPage() {
     resetToInitial,
     fetchModels,
   } = useModelEditorController();
-  const { backOrReplace } = useNavigationManager();
+  useNavigationManager();
   const editNavigate = useNavigate();
   const [editSearchParams] = useSearchParams();
   const returnTo = editSearchParams.get("returnTo");
@@ -881,9 +881,6 @@ export function EditModelPage() {
       }
 
       setShowMovePrompt(false);
-      if (movePromptSource === "save") {
-        backOrReplace(Routes.settingsModels);
-      }
     } catch (err: any) {
       console.error("Failed to move model", err);
       setMoveError(
@@ -896,9 +893,6 @@ export function EditModelPage() {
 
   const handleSkipMove = () => {
     setShowMovePrompt(false);
-    if (movePromptSource === "save") {
-      backOrReplace(Routes.settingsModels);
-    }
   };
   const selectedProviderCredential =
     editorModel &&

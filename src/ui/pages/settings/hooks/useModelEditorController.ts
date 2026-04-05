@@ -1105,7 +1105,7 @@ export function useModelEditorController(): ControllerReturn {
   }, [dispatch]);
 
   const doSave = useCallback(
-    async (navigate: boolean): Promise<boolean> => {
+    async (): Promise<boolean> => {
       const { editorModel, providers, modelAdvancedDraft } = state;
       if (!editorModel) return false;
 
@@ -1172,17 +1172,22 @@ export function useModelEditorController(): ControllerReturn {
       dispatch({ type: "set_saving", payload: true });
       try {
         const hardCappedScopes = getHardCappedScopes(providerCred.providerId);
-        await addOrUpdateModel({
+        const savedModel = {
           ...editorModel,
           providerId: providerCred.providerId,
           providerCredentialId: providerCred.id,
           providerLabel: providerCred.label,
           ...hardCappedScopes,
           advancedModelSettings: sanitizeAdvancedModelSettings(modelAdvancedDraft),
+        };
+        await addOrUpdateModel({
+          ...savedModel,
         });
-        if (navigate) {
-          backOrReplace(Routes.settingsModels);
-        }
+        dispatch({ type: "update_editor_model", payload: savedModel });
+        initialStateRef.current = {
+          editorModel: cloneSnapshot(savedModel),
+          modelAdvancedDraft: cloneSnapshot(savedModel.advancedModelSettings ?? modelAdvancedDraft),
+        };
         return true;
       } catch (error: any) {
         console.error("Failed to save model", error);
@@ -1195,15 +1200,15 @@ export function useModelEditorController(): ControllerReturn {
         dispatch({ type: "set_saving", payload: false });
       }
     },
-    [backOrReplace, state],
+    [dispatch, state],
   );
 
   const handleSave = useCallback(async () => {
-    await doSave(true);
+    await doSave();
   }, [doSave]);
 
   const saveModel = useCallback(async (): Promise<boolean> => {
-    return doSave(false);
+    return doSave();
   }, [doSave]);
 
   const handleDelete = useCallback(async () => {
