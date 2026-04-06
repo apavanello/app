@@ -103,7 +103,7 @@ export function ProvidersPage() {
   const providerRequiresApiKey = isCustomProvider
     ? customAuthMode !== "none"
     : selectedCapability
-      ? selectedCapability.requiredAuthHeaders.length > 0
+      ? selectedCapability.requiresApiKey
       : true;
   const showApiKeyInput = providerRequiresApiKey && !isEngineProvider;
   const showOfficialProviderStreamingToggle =

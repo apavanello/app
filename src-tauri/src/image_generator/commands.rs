@@ -99,7 +99,7 @@ pub async fn generate_image(
 
         let adapter = get_adapter(&request.provider_id)?;
 
-        let api_key = if adapter.required_auth_headers().is_empty() {
+        let api_key = if !adapter.requires_api_key() {
             provider_cred.api_key.unwrap_or_default()
         } else {
             provider_cred

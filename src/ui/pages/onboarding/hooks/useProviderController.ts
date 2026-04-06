@@ -150,9 +150,13 @@ export function useProviderController(): ControllerReturn {
       const credentialId = crypto.randomUUID();
       const trimmedKey = apiKey.trim();
 
-      const requiresVerification = ["openai", "anthropic", "openrouter", "lettuce-host"].includes(
-        selectedProviderId,
-      );
+      const requiresVerification = [
+        "openai",
+        "anthropic",
+        "openrouter",
+        "gemini",
+        "lettuce-host",
+      ].includes(selectedProviderId);
 
       if (requiresBaseUrl && !baseUrl?.trim()) {
         dispatch({

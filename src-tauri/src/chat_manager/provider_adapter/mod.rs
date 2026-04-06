@@ -29,6 +29,11 @@ pub trait ProviderAdapter {
     fn supports_stream(&self) -> bool {
         true
     }
+    /// Whether this provider requires an API key, regardless of whether auth is sent via
+    /// headers, query params, or another transport.
+    fn requires_api_key(&self) -> bool {
+        !self.required_auth_headers().is_empty()
+    }
     /// The required auth header keys for this provider (case sensitive suggestions for UI).
     fn required_auth_headers(&self) -> &'static [&'static str];
     /// A template of default headers (values redacted) to show expected headers without secrets.

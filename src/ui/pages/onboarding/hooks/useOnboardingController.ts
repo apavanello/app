@@ -276,7 +276,9 @@ export function useOnboardingController(): OnboardingController {
       const trimmedKey = apiKey.trim();
       const requiresVerification =
         !isLocalProvider &&
-        ["openai", "anthropic", "openrouter", "lettuce-host"].includes(selectedProviderId);
+        ["openai", "anthropic", "openrouter", "gemini", "lettuce-host"].includes(
+          selectedProviderId,
+        );
 
       // Local providers require base URL
       if (
