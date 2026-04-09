@@ -1810,23 +1810,27 @@ mod desktop {
             );
             let mut sampler = built_sampler.sampler;
             let mut streamed_thinking_parser = ThinkingTagStreamParser::default();
-            let mut structured_parser = built_prompt
-                .chat_template_result
-                .as_ref()
-                .map(|result| result.streaming_state_oaicompat())
-                .transpose()
-                .map_err(|e| {
-                    structured_output_failure(
-                        &app,
-                        request_id.as_ref(),
-                        model_path,
-                        tool_choice,
-                        &openai_compat_options,
-                        &built_prompt,
-                        "structured_parser_init",
-                        e,
-                    )
-                })?;
+            let mut structured_parser = if stream {
+                built_prompt
+                    .chat_template_result
+                    .as_ref()
+                    .map(|result| result.streaming_state_oaicompat())
+                    .transpose()
+                    .map_err(|e| {
+                        structured_output_failure(
+                            &app,
+                            request_id.as_ref(),
+                            model_path,
+                            tool_choice,
+                            &openai_compat_options,
+                            &built_prompt,
+                            "structured_parser_init",
+                            e,
+                        )
+                    })?
+            } else {
+                None
+            };
             let mut streamed_structured_text = String::new();
             let mut structured_parsed_len = 0usize;
 
