@@ -241,6 +241,17 @@ jobs:
           toolchain: stable
           cache: true
 
+      - name: Free runner disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - name: Install Linux system dependencies
         run: |
           sudo apt-get update
@@ -367,6 +378,17 @@ jobs:
         with:
           toolchain: stable
           cache: true
+
+      - name: Free runner disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
 
       - name: Install Linux system dependencies
         run: |
@@ -520,6 +542,17 @@ jobs:
           toolchain: stable
           cache: true
 
+      - name: Free runner disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - name: Install Linux system dependencies
         run: |
           sudo apt-get update
@@ -663,6 +696,34 @@ jobs:
         with:
           bun-version: "latest"
 
+      - name: Free runner disk space
+        shell: pwsh
+        run: |
+          Write-Host "Disk usage before cleanup:"
+          Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize
+
+          $paths = @(
+            "C:\Android",
+            "C:\Program Files (x86)\Android",
+            "C:\Strawberry",
+            "C:\ghcup",
+            "C:\hostedtoolcache\windows\Ruby",
+            "C:\hostedtoolcache\windows\PyPy",
+            "C:\hostedtoolcache\windows\go",
+            "C:\Program Files\Google\Chrome",
+            "C:\Program Files (x86)\Microsoft\Edge",
+            "C:\Program Files\Mozilla Firefox"
+          )
+          foreach ($p in $paths) {
+            if (Test-Path $p) {
+              Write-Host "Removing $p"
+              Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $p
+            }
+          }
+
+          Write-Host "Disk usage after cleanup:"
+          Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize
+
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
@@ -794,6 +855,34 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: "latest"
+
+      - name: Free runner disk space
+        shell: pwsh
+        run: |
+          Write-Host "Disk usage before cleanup:"
+          Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize
+
+          $paths = @(
+            "C:\Android",
+            "C:\Program Files (x86)\Android",
+            "C:\Strawberry",
+            "C:\ghcup",
+            "C:\hostedtoolcache\windows\Ruby",
+            "C:\hostedtoolcache\windows\PyPy",
+            "C:\hostedtoolcache\windows\go",
+            "C:\Program Files\Google\Chrome",
+            "C:\Program Files (x86)\Microsoft\Edge",
+            "C:\Program Files\Mozilla Firefox"
+          )
+          foreach ($p in $paths) {
+            if (Test-Path $p) {
+              Write-Host "Removing $p"
+              Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $p
+            }
+          }
+
+          Write-Host "Disk usage after cleanup:"
+          Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -943,6 +1032,34 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: "latest"
+
+      - name: Free runner disk space
+        shell: pwsh
+        run: |
+          Write-Host "Disk usage before cleanup:"
+          Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize
+
+          $paths = @(
+            "C:\Android",
+            "C:\Program Files (x86)\Android",
+            "C:\Strawberry",
+            "C:\ghcup",
+            "C:\hostedtoolcache\windows\Ruby",
+            "C:\hostedtoolcache\windows\PyPy",
+            "C:\hostedtoolcache\windows\go",
+            "C:\Program Files\Google\Chrome",
+            "C:\Program Files (x86)\Microsoft\Edge",
+            "C:\Program Files\Mozilla Firefox"
+          )
+          foreach ($p in $paths) {
+            if (Test-Path $p) {
+              Write-Host "Removing $p"
+              Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $p
+            }
+          }
+
+          Write-Host "Disk usage after cleanup:"
+          Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
