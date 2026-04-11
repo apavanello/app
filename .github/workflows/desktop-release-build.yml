@@ -276,6 +276,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
+            clang \
+            libclang-dev \
+            llvm-dev \
             pkg-config \
             libssl-dev \
             libgtk-3-dev \
@@ -285,6 +288,13 @@ jobs:
             libspeechd-dev \
             patchelf \
             zip
+
+      - name: Configure Linux clang toolchain
+        run: |
+          echo "CLANG_PATH=$(command -v clang)" >> "$GITHUB_ENV"
+          LIBCLANG_PATH="$(dirname "$(find /usr/lib -path '*/libclang.so*' | sort | tail -n1)")"
+          echo "LIBCLANG_PATH=$LIBCLANG_PATH" >> "$GITHUB_ENV"
+          printf '#include <stdbool.h>\n' | clang -E -x c - >/dev/null
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -372,6 +382,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
+            clang \
+            libclang-dev \
+            llvm-dev \
             pkg-config \
             libssl-dev \
             libgtk-3-dev \
@@ -381,6 +394,13 @@ jobs:
             libspeechd-dev \
             patchelf \
             zip
+
+      - name: Configure Linux clang toolchain
+        run: |
+          echo "CLANG_PATH=$(command -v clang)" >> "$GITHUB_ENV"
+          LIBCLANG_PATH="$(dirname "$(find /usr/lib -path '*/libclang.so*' | sort | tail -n1)")"
+          echo "LIBCLANG_PATH=$LIBCLANG_PATH" >> "$GITHUB_ENV"
+          printf '#include <stdbool.h>\n' | clang -E -x c - >/dev/null
 
       - name: Setup CUDA Toolkit
         uses: Jimver/cuda-toolkit@v0.2.30
@@ -494,6 +514,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
+            clang \
+            libclang-dev \
+            llvm-dev \
             pkg-config \
             libssl-dev \
             libgtk-3-dev \
@@ -505,6 +528,13 @@ jobs:
             glslc \
             patchelf \
             zip
+
+      - name: Configure Linux clang toolchain
+        run: |
+          echo "CLANG_PATH=$(command -v clang)" >> "$GITHUB_ENV"
+          LIBCLANG_PATH="$(dirname "$(find /usr/lib -path '*/libclang.so*' | sort | tail -n1)")"
+          echo "LIBCLANG_PATH=$LIBCLANG_PATH" >> "$GITHUB_ENV"
+          printf '#include <stdbool.h>\n' | clang -E -x c - >/dev/null
 
       - name: Verify Vulkan toolchain
         run: |

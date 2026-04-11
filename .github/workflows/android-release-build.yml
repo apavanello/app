@@ -235,7 +235,6 @@ jobs:
           echo "Disk usage before cleanup:"
           df -h
 
-          sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android/sdk/system-images || true
           sudo rm -rf /opt/ghc || true
           sudo rm -rf /opt/hostedtoolcache/CodeQL || true
