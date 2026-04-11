@@ -14,6 +14,7 @@ use crate::{
         sse::SseDecoder,
         types::{ErrorEnvelope, NormalizedEvent, ProviderCredential},
     },
+    infra::abort_manager::AbortRegistry,
     transport::{self, DEFAULT_REQUEST_TIMEOUT_MS},
 };
 
@@ -82,7 +83,7 @@ pub async fn execute_chat_request(
         &client,
         &req.url,
         &chat_body,
-        req.request_id.as_deref(),
+        req,
     )
     .await
 }
@@ -512,18 +513,71 @@ async fn execute_non_streaming_chat_request(
     client: &reqwest::Client,
     url: &str,
     chat_body: &Value,
-    request_id: Option<&str>,
+    req: &ApiRequest,
 ) -> Result<ApiResponse, String> {
+    let request_id = req.request_id.as_deref();
     let request = client.post(url).json(chat_body);
-    let response = transport::send_with_retries(app, "ollama_chat", request, 2, request_id)
-        .await
-        .map_err(|err| err.to_string())?;
+    let mut abort_rx = request_id.map(|req_id| {
+        let registry = app.state::<AbortRegistry>();
+        registry.register(req_id.to_string())
+    });
+
+    let emit_abort = || {
+        if let Some(req_id) = request_id {
+            let envelope = ErrorEnvelope {
+                code: Some("ABORTED".to_string()),
+                message: "Request was cancelled by user".to_string(),
+                provider_id: req.provider_id.clone(),
+                request_id: Some(req_id.to_string()),
+                retryable: Some(false),
+                status: None,
+            };
+            transport::emit_normalized(app, req_id, NormalizedEvent::Error { envelope });
+        }
+    };
+
+    let response = if let Some(abort_rx) = abort_rx.as_mut() {
+        tokio::select! {
+            _ = abort_rx => {
+                unregister_abort(app, request_id);
+                emit_abort();
+                return Err("Request was cancelled by user".to_string());
+            }
+            response = transport::send_with_retries(app, "ollama_chat", request, 2, request_id) => {
+                match response {
+                    Ok(response) => response,
+                    Err(err) => {
+                        unregister_abort(app, request_id);
+                        return Err(err.to_string());
+                    }
+                }
+            }
+        }
+    } else {
+        transport::send_with_retries(app, "ollama_chat", request, 2, request_id)
+            .await
+            .map_err(|err| err.to_string())?
+    };
     let status = response.status();
     let status_code = status.as_u16();
-    let text = response
-        .text()
-        .await
-        .map_err(|err| crate::utils::err_to_string(module_path!(), line!(), err))?;
+    let text = if let Some(abort_rx) = abort_rx.as_mut() {
+        tokio::select! {
+            _ = abort_rx => {
+                unregister_abort(app, request_id);
+                emit_abort();
+                return Err("Request was cancelled by user".to_string());
+            }
+            text = response.text() => {
+                text.map_err(|err| crate::utils::err_to_string(module_path!(), line!(), err))?
+            }
+        }
+    } else {
+        response
+            .text()
+            .await
+            .map_err(|err| crate::utils::err_to_string(module_path!(), line!(), err))?
+    };
+    unregister_abort(app, request_id);
 
     if !status.is_success() {
         let payload =
@@ -546,6 +600,14 @@ async fn execute_non_streaming_chat_request(
         headers: HashMap::new(),
         data: payload,
     })
+}
+
+fn unregister_abort(app: &tauri::AppHandle, request_id: Option<&str>) {
+    let Some(request_id) = request_id else {
+        return;
+    };
+    let registry = app.state::<AbortRegistry>();
+    registry.unregister(request_id);
 }
 
 fn emit_normalized_events(
