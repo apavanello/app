@@ -96,6 +96,8 @@ fn initialize_logging(app: &mut tauri::App) {
     }
     std::panic::set_hook(Box::new(|info| {
         let message = format!("{}", info);
+        eprintln!("panic: {}", message);
+        eprintln!("{}", std::backtrace::Backtrace::force_capture());
         utils::log_error_global("panic", message);
     }));
 }

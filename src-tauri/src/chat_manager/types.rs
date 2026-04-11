@@ -4,12 +4,22 @@ use std::collections::HashMap;
 
 use super::tooling::ToolCall;
 
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 #[serde(rename_all = "camelCase")]
-pub enum PromptScope {
-    AppWide,
-    ModelSpecific,
-    CharacterSpecific,
+pub enum PromptTemplateType {
+    #[default]
+    Undefined,
+    DirectChat,
+    GroupChatRoleplay,
+    GroupChatConversational,
+    DynamicMemorySummarizer,
+    DynamicMemoryManager,
+    ReplyHelperRoleplay,
+    ReplyHelperConversational,
+    AvatarGeneration,
+    AvatarEditRequest,
+    SceneGeneration,
+    DesignReferenceWriter,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -183,10 +193,8 @@ pub struct SystemPromptEntry {
 pub struct SystemPromptTemplate {
     pub id: String,
     pub name: String,
-    pub scope: PromptScope,
-    /// Model or Character IDs this template applies to (empty for AppWide)
     #[serde(default)]
-    pub target_ids: Vec<String>,
+    pub prompt_type: PromptTemplateType,
     pub content: String,
     #[serde(default)]
     pub entries: Vec<SystemPromptEntry>,

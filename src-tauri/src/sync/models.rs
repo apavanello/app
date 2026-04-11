@@ -88,8 +88,7 @@ pub struct ProviderCredential {
 pub struct PromptTemplate {
     pub id: String,
     pub name: String,
-    pub scope: String,
-    pub target_ids: String,
+    pub prompt_type: String,
     pub content: String,
     pub entries: String,
     #[serde(default)]

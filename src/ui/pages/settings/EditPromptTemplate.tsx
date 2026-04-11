@@ -44,21 +44,26 @@ import {
   resetGroupChatTemplate,
   resetGroupChatRoleplayTemplate,
   resetHelpMeReplyTemplate,
+  resetHelpMeReplyConversationalTemplate,
   resetAvatarGenerationTemplate,
   resetAvatarEditTemplate,
   resetSceneGenerationTemplate,
   resetDesignReferenceTemplate,
   renderPromptPreview,
-  getRequiredTemplateVariables,
+  getPromptParameterEngine,
 } from "../../../core/prompts/service";
 import { listCharacters, listPersonas } from "../../../core/storage";
 import type {
   Character,
   Persona,
+  PromptParameterEngine,
   PromptEntryCondition,
+  PromptTemplateType,
+  PromptTypeDefinition,
   SystemPromptEntry,
 } from "../../../core/storage/schemas";
 import {
+  APP_DEFAULT_TEMPLATE_ID,
   APP_LOCAL_ROLEPLAY_TEMPLATE_ID,
   APP_DYNAMIC_SUMMARY_TEMPLATE_ID,
   APP_DYNAMIC_MEMORY_TEMPLATE_ID,
@@ -73,196 +78,9 @@ import {
   isProtectedPromptTemplate,
 } from "../../../core/prompts/constants";
 
-type PromptType =
-  | "system"
-  | "local_roleplay"
-  | "summary"
-  | "memory"
-  | "reply"
-  | "avatar_generation"
-  | "avatar_edit"
-  | "scene_generation"
-  | "design_reference"
-  | "group_chat"
-  | "group_chat_roleplay"
-  | null;
-
-type Variable = {
-  var: string;
-  label: string;
-  desc: string;
-};
-
 type PromptEntryImageSlot = "character" | "persona" | "chatBackground" | "avatar" | "references";
 type PromptEntryKind = "text" | "image";
-type ImageCapablePromptType = Exclude<PromptType, null>;
-
-const VARIABLES_BY_TYPE: Record<string, Variable[]> = {
-  system: [
-    { var: "{{char.name}}", label: "Character Name", desc: "The character's display name" },
-    { var: "{{char.desc}}", label: "Character Definition", desc: "Full character definition" },
-    { var: "{{scene}}", label: "Scene", desc: "Starting scene or scenario" },
-    { var: "{{rules}}", label: "Rules", desc: "Character behavioral rules" },
-    { var: "{{persona.name}}", label: "User Name", desc: "The user's persona name" },
-    { var: "{{persona.desc}}", label: "User Description", desc: "User persona description" },
-    { var: "{{context_summary}}", label: "Context Summary", desc: "Dynamic conversation summary" },
-    { var: "{{key_memories}}", label: "Key Memories", desc: "List of relevant memories" },
-  ],
-  local_roleplay: [
-    { var: "{{char.name}}", label: "Character Name", desc: "The character's display name" },
-    { var: "{{char.desc}}", label: "Character Definition", desc: "Full character definition" },
-    { var: "{{persona.name}}", label: "User Name", desc: "The user's persona name" },
-    { var: "{{persona.desc}}", label: "User Description", desc: "User persona description" },
-    { var: "{{scene}}", label: "Scene", desc: "Starting scene or scenario" },
-    { var: "{{scene_direction}}", label: "Scene Direction", desc: "Optional scene direction" },
-    { var: "{{context_summary}}", label: "Context Summary", desc: "Dynamic conversation summary" },
-    { var: "{{key_memories}}", label: "Key Memories", desc: "List of relevant memories" },
-    { var: "{{lorebook}}", label: "Lorebook", desc: "Matched lorebook content" },
-  ],
-  summary: [
-    { var: "{{prev_summary}}", label: "Previous Summary", desc: "The cumulative summary" },
-    { var: "{{character}}", label: "Character", desc: "Character placeholder" },
-    { var: "{{persona}}", label: "Persona", desc: "Persona placeholder" },
-  ],
-  memory: [
-    { var: "{{max_entries}}", label: "Max Entries", desc: "Maximum memory entries allowed" },
-  ],
-  reply: [
-    { var: "{{char.name}}", label: "Character Name", desc: "The character's display name" },
-    { var: "{{char.desc}}", label: "Character Definition", desc: "Full character definition" },
-    { var: "{{persona.name}}", label: "User Name", desc: "The user's persona name" },
-    { var: "{{persona.desc}}", label: "User Description", desc: "User persona description" },
-    { var: "{{current_draft}}", label: "Current Draft", desc: "Content user started writing" },
-  ],
-  avatar_generation: [
-    {
-      var: "{{avatar_subject_name}}",
-      label: "Avatar Subject Name",
-      desc: "Name of the character or persona the avatar is for",
-    },
-    {
-      var: "{{avatar_subject_description}}",
-      label: "Avatar Subject Description",
-      desc: "Description of the character or persona the avatar is for",
-    },
-    { var: "{{avatar_request}}", label: "Avatar Request", desc: "User request for the avatar" },
-  ],
-  avatar_edit: [
-    {
-      var: "{{avatar_subject_name}}",
-      label: "Avatar Subject Name",
-      desc: "Name of the character or persona the avatar is for",
-    },
-    {
-      var: "{{avatar_subject_description}}",
-      label: "Avatar Subject Description",
-      desc: "Description of the character or persona the avatar is for",
-    },
-    {
-      var: "{{current_avatar_prompt}}",
-      label: "Current Avatar Prompt",
-      desc: "The prompt used for the current avatar image",
-    },
-    { var: "{{edit_request}}", label: "Edit Request", desc: "Requested avatar changes" },
-  ],
-  scene_generation: [
-    { var: "{{char.name}}", label: "Character Name", desc: "The character's display name" },
-    { var: "{{char.desc}}", label: "Character Definition", desc: "Full character definition" },
-    { var: "{{persona.name}}", label: "User Name", desc: "The user's persona name" },
-    { var: "{{persona.desc}}", label: "User Description", desc: "User persona description" },
-    {
-      var: "{{image[character]}}",
-      label: "Character Reference Image",
-      desc: "Injected image block for the character avatar reference",
-    },
-    {
-      var: "{{reference[character]}}",
-      label: "Character Reference Text",
-      desc: "Rendered text notes for the character design references",
-    },
-    {
-      var: "{{image[persona]}}",
-      label: "Persona Reference Image",
-      desc: "Injected image block for the persona avatar reference",
-    },
-    {
-      var: "{{image[chatBackground]}}",
-      label: "Chat Background Image",
-      desc: "Injected image block for the chat background/environment reference",
-    },
-    {
-      var: "{{reference[chatBackground]}}",
-      label: "Chat Background Text",
-      desc: "Rendered text directions for using the chat background as a scene reference",
-    },
-    {
-      var: "{{reference[persona]}}",
-      label: "Persona Reference Text",
-      desc: "Rendered text notes for the persona design references",
-    },
-    {
-      var: "{{recent_messages}}",
-      label: "Recent Messages",
-      desc: "Recent chat lines used to derive the scene",
-    },
-    {
-      var: "{{scene_request}}",
-      label: "Scene Request",
-      desc: "Manual or automatic scene image request",
-    },
-  ],
-  design_reference: [
-    { var: "{{subject_name}}", label: "Subject Name", desc: "Name of the subject being described" },
-    {
-      var: "{{subject_description}}",
-      label: "Subject Context",
-      desc: "Character or persona context that can inform the design notes",
-    },
-    {
-      var: "{{current_description}}",
-      label: "Current Notes",
-      desc: "Existing design notes to refine when they match the images",
-    },
-    {
-      var: "{{image[avatar]}}",
-      label: "Avatar Image",
-      desc: "Injected image block for the subject's avatar when available",
-    },
-    {
-      var: "{{image[references]}}",
-      label: "Reference Images",
-      desc: "Injected image block for attached design reference images",
-    },
-  ],
-  group_chat: [
-    { var: "{{char.name}}", label: "Character Name", desc: "The character's display name" },
-    { var: "{{char.desc}}", label: "Character Definition", desc: "Full character definition" },
-    { var: "{{persona.name}}", label: "User Name", desc: "The user's persona name" },
-    { var: "{{persona.desc}}", label: "User Description", desc: "User persona description" },
-    { var: "{{group_characters}}", label: "Group Characters", desc: "List of group characters" },
-  ],
-  group_chat_roleplay: [
-    { var: "{{scene}}", label: "Scene", desc: "Starting scene or scenario" },
-    { var: "{{scene_direction}}", label: "Scene Direction", desc: "Optional scene direction" },
-    { var: "{{char.name}}", label: "Character Name", desc: "The character's display name" },
-    { var: "{{char.desc}}", label: "Character Definition", desc: "Full character definition" },
-    { var: "{{persona.name}}", label: "User Name", desc: "The user's persona name" },
-    { var: "{{persona.desc}}", label: "User Description", desc: "User persona description" },
-    { var: "{{group_characters}}", label: "Group Characters", desc: "List of group characters" },
-    { var: "{{context_summary}}", label: "Context Summary", desc: "Dynamic conversation summary" },
-    { var: "{{key_memories}}", label: "Key Memories", desc: "List of relevant memories" },
-  ],
-  default: [
-    { var: "{{char.name}}", label: "Character Name", desc: "The character's display name" },
-    { var: "{{char.desc}}", label: "Character Definition", desc: "Full character definition" },
-    { var: "{{scene}}", label: "Scene", desc: "Starting scene or scenario" },
-    { var: "{{rules}}", label: "Rules", desc: "Character behavioral rules" },
-    { var: "{{persona.name}}", label: "User Name", desc: "The user's persona name" },
-    { var: "{{persona.desc}}", label: "User Description", desc: "User persona description" },
-    { var: "{{context_summary}}", label: "Context Summary", desc: "Dynamic conversation summary" },
-    { var: "{{key_memories}}", label: "Key Memories", desc: "List of relevant memories" },
-  ],
-};
+type PromptType = PromptTemplateType;
 
 const IMAGE_ENTRY_SLOT_LABELS: Record<PromptEntryImageSlot, string> = {
   character: "Character reference",
@@ -280,11 +98,11 @@ const IMAGE_ENTRY_SLOT_TOKENS: Record<PromptEntryImageSlot, string> = {
   references: "{{image[references]}}",
 };
 
-const IMAGE_ENTRY_SLOT_OPTIONS_BY_PROMPT_TYPE: Partial<
-  Record<ImageCapablePromptType, PromptEntryImageSlot[]>
-> = {
-  scene_generation: ["character", "persona", "chatBackground"],
-  design_reference: ["avatar", "references"],
+const IMAGE_ENTRY_SLOT_OPTIONS_BY_PROMPT_TYPE: Partial<Record<PromptType, PromptEntryImageSlot[]>> =
+  {
+    undefined: ["character", "persona", "chatBackground", "avatar", "references"],
+    sceneGeneration: ["character", "persona", "chatBackground"],
+    designReferenceWriter: ["avatar", "references"],
 };
 
 const ENTRY_ROLE_OPTIONS = [
@@ -2332,30 +2150,32 @@ function PromptEntryListItem({
 
 function getPromptTypeName(type: PromptType): string {
   switch (type) {
-    case "system":
-      return "System Prompt";
-    case "local_roleplay":
-      return "Local RP Default";
-    case "summary":
-      return "Dynamic Summary";
-    case "memory":
-      return "Dynamic Memory";
-    case "reply":
-      return "Reply Helper";
-    case "avatar_generation":
-      return "Avatar Generation";
-    case "avatar_edit":
-      return "Avatar Image Edit";
-    case "scene_generation":
-      return "Scene Generation";
-    case "design_reference":
-      return "Design Reference Writer";
-    case "group_chat":
-      return "Group Chat (Conversation)";
-    case "group_chat_roleplay":
+    case "undefined":
+      return "Undefined";
+    case "directChat":
+      return "Direct Chat";
+    case "groupChatRoleplay":
       return "Group Chat (Roleplay)";
+    case "groupChatConversational":
+      return "Group Chat (Conversation)";
+    case "dynamicMemorySummarizer":
+      return "Dynamic Memory Summarizer";
+    case "dynamicMemoryManager":
+      return "Dynamic Memory Manager";
+    case "replyHelperRoleplay":
+      return "Reply Helper (Roleplay)";
+    case "replyHelperConversational":
+      return "Reply Helper (Conversational)";
+    case "avatarGeneration":
+      return "Avatar Generation";
+    case "avatarEditRequest":
+      return "Avatar Edit Request";
+    case "sceneGeneration":
+      return "Scene Generation";
+    case "designReferenceWriter":
+      return "Design Reference Writer";
     default:
-      return "Custom Prompt";
+      return "Undefined";
   }
 }
 
@@ -2423,21 +2243,13 @@ export function EditPromptTemplate() {
 
   // Template metadata
   const [isAppDefault, setIsAppDefault] = useState(false);
-  const [promptType, setPromptType] = useState<PromptType>(null);
+  const [promptType, setPromptType] = useState<PromptType>("undefined");
+  const [parameterEngine, setParameterEngine] = useState<PromptParameterEngine | null>(null);
   const [resetting, setResetting] = useState(false);
   const [requiredVariables, setRequiredVariables] = useState<string[]>([]);
   const [missingVariables, setMissingVariables] = useState<string[]>([]);
 
-  const canReset =
-    isAppDefault &&
-    (promptType === "system" ||
-      promptType === "summary" ||
-      promptType === "memory" ||
-      promptType === "reply" ||
-      promptType === "avatar_generation" ||
-      promptType === "avatar_edit" ||
-      promptType === "scene_generation" ||
-      promptType === "design_reference");
+  const canReset = isAppDefault && Boolean(id);
 
   const usesEntryEditor = true;
   const quickInsertY = useMotionValue(0);
@@ -2483,7 +2295,13 @@ export function EditPromptTemplate() {
     return () => (scrollParent ?? window).removeEventListener("scroll", handleScroll, options);
   }, [scrollListenerMounted, quickInsertY]);
 
-  const variables = VARIABLES_BY_TYPE[promptType || "default"] || VARIABLES_BY_TYPE.default;
+  const promptTypeDefinitions = useMemo(() => {
+    return new Map<PromptType, PromptTypeDefinition>(
+      (parameterEngine?.promptTypes ?? []).map((definition) => [definition.promptType, definition]),
+    );
+  }, [parameterEngine]);
+  const currentPromptTypeDefinition = promptTypeDefinitions.get(promptType) ?? null;
+  const variables = currentPromptTypeDefinition?.allowedVariables ?? [];
 
   const contentValue = usesEntryEditor ? entriesToContent(entries) : content;
   const charCount = contentValue.length;
@@ -2594,18 +2412,26 @@ export function EditPromptTemplate() {
   }, []);
 
   useEffect(() => {
-    if (isAppDefault && requiredVariables.length > 0) {
-      const source = usesEntryEditor ? entriesToValidationSource(entries) : content;
-      const missing = requiredVariables.filter((v) => !source.includes(v));
-      setMissingVariables(missing);
-    }
-  }, [content, entries, requiredVariables, isAppDefault, usesEntryEditor]);
+    const source = usesEntryEditor ? entriesToValidationSource(entries) : content;
+    const missing = requiredVariables.filter((v) => !source.includes(v));
+    setMissingVariables(missing);
+  }, [content, entries, requiredVariables, usesEntryEditor]);
+
+  useEffect(() => {
+    const required = promptTypeDefinitions.get(promptType)?.requiredVariables ?? [];
+    setRequiredVariables(required);
+  }, [promptType, promptTypeDefinitions]);
 
   async function loadData() {
     try {
-      const [chars, pers] = await Promise.all([listCharacters(), listPersonas()]);
+      const [chars, pers, nextParameterEngine] = await Promise.all([
+        listCharacters(),
+        listPersonas(),
+        getPromptParameterEngine(),
+      ]);
       setCharacters(chars);
       setPersonas(pers);
+      setParameterEngine(nextParameterEngine);
       setPreviewCharacterId(chars[0]?.id ?? null);
       setPreviewPersonaId(pers.find((p) => p.isDefault)?.id ?? null);
 
@@ -2621,34 +2447,7 @@ export function EditPromptTemplate() {
           const isProtected =
             template.id === appDefaultId || isProtectedPromptTemplate(template.id);
           setIsAppDefault(isProtected);
-
-          let detectedType: PromptType = null;
-          if (template.id === appDefaultId) {
-            detectedType = "system";
-          } else if (template.id === APP_LOCAL_ROLEPLAY_TEMPLATE_ID) {
-            detectedType = "local_roleplay";
-          } else if (template.id === APP_DYNAMIC_SUMMARY_TEMPLATE_ID) {
-            detectedType = "summary";
-          } else if (template.id === APP_DYNAMIC_MEMORY_TEMPLATE_ID) {
-            detectedType = "memory";
-          } else if (template.id === APP_HELP_ME_REPLY_TEMPLATE_ID) {
-            detectedType = "reply";
-          } else if (template.id === APP_HELP_ME_REPLY_CONVERSATIONAL_TEMPLATE_ID) {
-            detectedType = "reply";
-          } else if (template.id === APP_AVATAR_GENERATION_TEMPLATE_ID) {
-            detectedType = "avatar_generation";
-          } else if (template.id === APP_AVATAR_EDIT_TEMPLATE_ID) {
-            detectedType = "avatar_edit";
-          } else if (template.id === APP_SCENE_GENERATION_TEMPLATE_ID) {
-            detectedType = "scene_generation";
-          } else if (template.id === APP_DESIGN_REFERENCE_TEMPLATE_ID) {
-            detectedType = "design_reference";
-          } else if (template.id === APP_GROUP_CHAT_TEMPLATE_ID) {
-            detectedType = "group_chat";
-          } else if (template.id === APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_ID) {
-            detectedType = "group_chat_roleplay";
-          }
-          setPromptType(detectedType);
+          setPromptType(template.promptType);
 
           const nextEntries =
             template.entries?.length > 0
@@ -2666,17 +2465,22 @@ export function EditPromptTemplate() {
             entries: serializeEntries(normalizedEntries),
             condensePromptEntries: Boolean(template.condensePromptEntries),
           };
-
-          if (isProtected) {
-            const required = await getRequiredTemplateVariables(template.id);
-            setRequiredVariables(required);
-          }
+          const required =
+            nextParameterEngine.promptTypes.find(
+              (definition) => definition.promptType === template.promptType,
+            )?.requiredVariables ?? [];
+          setRequiredVariables(required);
         }
       } else {
         setContent("");
         setEntries([]);
         setCondensePromptEntries(false);
         setCollapsedEntries({});
+        setPromptType("undefined");
+        setRequiredVariables(
+          nextParameterEngine.promptTypes.find((definition) => definition.promptType === "undefined")
+            ?.requiredVariables ?? [],
+        );
         initialRef.current = {
           name: "",
           content: "",
@@ -2780,11 +2584,11 @@ export function EditPromptTemplate() {
     if (!nameSnapshot || !hasContent) return;
 
     const currentMissingVariables =
-      isAppDefault && requiredVariables.length > 0
+      requiredVariables.length > 0
         ? requiredVariables.filter((variable) => !validationSource.includes(variable))
         : [];
 
-    if (isAppDefault && id && currentMissingVariables.length > 0) {
+    if (currentMissingVariables.length > 0) {
       alert(`Cannot save: Missing required variables: ${currentMissingVariables.join(", ")}`);
       return;
     }
@@ -2805,6 +2609,7 @@ export function EditPromptTemplate() {
       if (isEditing && id) {
         savedTemplate = await updatePromptTemplate(id, {
           name: nameSnapshot,
+          promptType,
           content: contentToSave,
           entries: usesEntryEditor ? entriesSnapshot : undefined,
           condensePromptEntries,
@@ -2812,8 +2617,7 @@ export function EditPromptTemplate() {
       } else {
         savedTemplate = await createPromptTemplate(
           nameSnapshot,
-          "appWide" as any,
-          [],
+          promptType,
           contentToSave,
           usesEntryEditor ? entriesSnapshot : undefined,
           condensePromptEntries,
@@ -2853,26 +2657,11 @@ export function EditPromptTemplate() {
   }
 
   async function handleReset() {
-    if (!isAppDefault || !promptType) return;
-    if (
-      ![
-        "system",
-        "local_roleplay",
-        "summary",
-        "memory",
-        "group_chat",
-        "group_chat_roleplay",
-        "reply",
-        "avatar_generation",
-        "avatar_edit",
-        "scene_generation",
-        "design_reference",
-      ].includes(promptType)
-    ) {
+    if (!isAppDefault || !id) {
       return;
     }
 
-    const promptTypeName = getPromptTypeName(promptType);
+    const promptTypeName = name.trim() || getPromptTypeName(promptType);
     const confirmed = await confirmBottomMenu({
       title: `Reset ${promptTypeName}?`,
       message: `Reset to the original default ${promptTypeName}? This cannot be undone.`,
@@ -2884,30 +2673,35 @@ export function EditPromptTemplate() {
     setResetting(true);
     try {
       let updated;
-      if (promptType === "system") {
+      if (id === APP_DEFAULT_TEMPLATE_ID) {
         updated = await resetAppDefaultTemplate();
-      } else if (promptType === "local_roleplay") {
+      } else if (id === APP_LOCAL_ROLEPLAY_TEMPLATE_ID) {
         updated = await resetLocalRoleplayTemplate();
-      } else if (promptType === "summary") {
+      } else if (id === APP_DYNAMIC_SUMMARY_TEMPLATE_ID) {
         updated = await resetDynamicSummaryTemplate();
-      } else if (promptType === "memory") {
+      } else if (id === APP_DYNAMIC_MEMORY_TEMPLATE_ID) {
         updated = await resetDynamicMemoryTemplate();
-      } else if (promptType === "group_chat") {
+      } else if (id === APP_GROUP_CHAT_TEMPLATE_ID) {
         updated = await resetGroupChatTemplate();
-      } else if (promptType === "group_chat_roleplay") {
+      } else if (id === APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_ID) {
         updated = await resetGroupChatRoleplayTemplate();
-      } else if (promptType === "reply") {
+      } else if (id === APP_HELP_ME_REPLY_TEMPLATE_ID) {
         updated = await resetHelpMeReplyTemplate();
-      } else if (promptType === "avatar_generation") {
+      } else if (id === APP_HELP_ME_REPLY_CONVERSATIONAL_TEMPLATE_ID) {
+        updated = await resetHelpMeReplyConversationalTemplate();
+      } else if (id === APP_AVATAR_GENERATION_TEMPLATE_ID) {
         updated = await resetAvatarGenerationTemplate();
-      } else if (promptType === "scene_generation") {
+      } else if (id === APP_AVATAR_EDIT_TEMPLATE_ID) {
+        updated = await resetAvatarEditTemplate();
+      } else if (id === APP_SCENE_GENERATION_TEMPLATE_ID) {
         updated = await resetSceneGenerationTemplate();
-      } else if (promptType === "design_reference") {
+      } else if (id === APP_DESIGN_REFERENCE_TEMPLATE_ID) {
         updated = await resetDesignReferenceTemplate();
       } else {
-        updated = await resetAvatarEditTemplate();
+        return;
       }
       setContent(updated.content);
+      setPromptType(updated.promptType);
       setCondensePromptEntries(Boolean(updated.condensePromptEntries));
       if (usesEntryEditor) {
         const nextEntries =
@@ -3261,7 +3055,7 @@ export function EditPromptTemplate() {
                   </motion.div>
                 )}
 
-                {isAppDefault && missingVariables.length > 0 && (
+                {missingVariables.length > 0 && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
@@ -3302,6 +3096,37 @@ export function EditPromptTemplate() {
                     "focus:border-fg/20 focus:bg-fg/10 focus:outline-none",
                   )}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium uppercase tracking-wider text-fg/50">
+                  Prompt Type
+                </label>
+                <select
+                  value={promptType}
+                  onChange={(e) => setPromptType(e.target.value as PromptType)}
+                  disabled={isAppDefault}
+                  className={cn(
+                    "w-full px-4 py-3",
+                    radius.lg,
+                    "border border-fg/10 bg-fg/5",
+                    "text-sm text-fg",
+                    interactive.transition.fast,
+                    "focus:border-fg/20 focus:bg-fg/10 focus:outline-none",
+                    "disabled:cursor-not-allowed disabled:opacity-60",
+                  )}
+                >
+                  {(parameterEngine?.promptTypes ?? []).map((definition) => (
+                    <option key={definition.promptType} value={definition.promptType}>
+                      {definition.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs leading-relaxed text-fg/42">
+                  {currentPromptTypeDefinition
+                    ? `${currentPromptTypeDefinition.requiredVariables.length} required variables, ${currentPromptTypeDefinition.allowedVariables.length} available variables.`
+                    : "Prompt types control allowed variables and required variables."}
+                </p>
               </div>
 
               {/* Content Editor */}
@@ -3571,12 +3396,12 @@ export function EditPromptTemplate() {
 
                 <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
                   {variables.map((v) => {
-                    const isRequired = requiredVariables.includes(v.var);
-                    const isMissing = missingVariables.includes(v.var);
+                    const isRequired = requiredVariables.includes(v.variable);
+                    const isMissing = missingVariables.includes(v.variable);
                     return (
                       <button
-                        key={v.var}
-                        onClick={() => insertVariable(v.var)}
+                        key={v.variable}
+                        onClick={() => insertVariable(v.variable)}
                         className={cn(
                           "w-full text-left p-2",
                           radius.md,
@@ -3601,16 +3426,16 @@ export function EditPromptTemplate() {
                               ★
                             </span>
                           )}
-                          <code
-                            className={cn(
-                              "text-xs font-medium",
-                              isMissing ? "text-danger/80" : "text-accent/80",
-                            )}
-                          >
-                            {v.var}
-                          </code>
-                        </div>
-                        <p className="text-[10px] text-fg/40 mt-0.5">{v.desc}</p>
+                            <code
+                              className={cn(
+                                "text-xs font-medium",
+                                isMissing ? "text-danger/80" : "text-accent/80",
+                              )}
+                            >
+                              {v.variable}
+                            </code>
+                          </div>
+                        <p className="text-[10px] text-fg/40 mt-0.5">{v.description}</p>
                       </button>
                     );
                   })}
@@ -3637,7 +3462,7 @@ export function EditPromptTemplate() {
         <div className="space-y-4">
           <p className="text-xs text-fg/50">Tap to insert a variable into your prompt</p>
 
-          {isAppDefault && requiredVariables.length > 0 && (
+          {requiredVariables.length > 0 && (
             <div className={cn(radius.lg, "border border-warning/30 bg-warning/10 p-3")}>
               <p className="text-xs text-warning/80">
                 <span className="font-semibold">Required:</span> Variables marked with ★ must be
@@ -3648,11 +3473,11 @@ export function EditPromptTemplate() {
 
           <div className="max-h-[50vh] overflow-y-auto space-y-2">
             {variables.map((item) => {
-              const isRequired = requiredVariables.includes(item.var);
-              const isMissing = missingVariables.includes(item.var);
+              const isRequired = requiredVariables.includes(item.variable);
+              const isMissing = missingVariables.includes(item.variable);
               return (
                 <div
-                  key={item.var}
+                  key={item.variable}
                   className={cn(
                     radius.lg,
                     "border p-3",
@@ -3677,9 +3502,9 @@ export function EditPromptTemplate() {
                             isMissing ? "text-danger/80" : "text-accent/80",
                           )}
                         >
-                          {item.var}
+                          {item.variable}
                         </code>
-                        {copiedVar === item.var && (
+                        {copiedVar === item.variable && (
                           <span className="flex items-center gap-1 text-xs text-accent/80">
                             <Check className="h-3 w-3" />
                             Copied
@@ -3687,12 +3512,12 @@ export function EditPromptTemplate() {
                         )}
                       </div>
                       <p className="text-sm text-fg/80">{item.label}</p>
-                      <p className="text-xs text-fg/50">{item.desc}</p>
+                      <p className="text-xs text-fg/50">{item.description}</p>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
                       <button
-                        onClick={() => copyVariable(item.var)}
+                        onClick={() => copyVariable(item.variable)}
                         className={cn(
                           "flex items-center justify-center h-8 w-8",
                           radius.md,
@@ -3707,7 +3532,7 @@ export function EditPromptTemplate() {
                       </button>
                       <button
                         onClick={() => {
-                          insertVariable(item.var);
+                          insertVariable(item.variable);
                           setShowVariables(false);
                         }}
                         className={cn(

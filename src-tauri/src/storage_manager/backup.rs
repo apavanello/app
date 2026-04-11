@@ -355,7 +355,7 @@ fn export_secrets(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
 fn export_prompt_templates(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, String> {
     let conn = open_db(app)?;
     let mut stmt = conn
-        .prepare("SELECT id, name, scope, target_ids, content, entries, condense_prompt_entries, created_at, updated_at FROM prompt_templates")
+        .prepare("SELECT id, name, prompt_type, content, entries, condense_prompt_entries, created_at, updated_at FROM prompt_templates")
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
 
     let rows = stmt
@@ -367,13 +367,12 @@ fn export_prompt_templates(app: &tauri::AppHandle) -> Result<Vec<JsonValue>, Str
             Ok(serde_json::json!({
                 "id": r.get::<_, String>(0)?,
                 "name": r.get::<_, String>(1)?,
-                "scope": r.get::<_, String>(2)?,
-                "target_ids": r.get::<_, String>(3)?,
-                "content": r.get::<_, String>(4)?,
+                "prompt_type": r.get::<_, String>(2)?,
+                "content": r.get::<_, String>(3)?,
                 "entries": entries_value,
-                "condense_prompt_entries": r.get::<_, i64>(6)? != 0,
-                "created_at": r.get::<_, i64>(7)?,
-                "updated_at": r.get::<_, i64>(8)?,
+                "condense_prompt_entries": r.get::<_, i64>(5)? != 0,
+                "created_at": r.get::<_, i64>(6)?,
+                "updated_at": r.get::<_, i64>(7)?,
             }))
         })
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
@@ -1722,13 +1721,15 @@ fn import_prompt_templates(app: &tauri::AppHandle, data: &JsonValue) -> Result<(
             };
 
             conn.execute(
-                "INSERT OR REPLACE INTO prompt_templates (id, name, scope, target_ids, content, entries, condense_prompt_entries, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                "INSERT OR REPLACE INTO prompt_templates (id, name, prompt_type, content, entries, condense_prompt_entries, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     id,
                     item.get("name").and_then(|v| v.as_str()),
-                    item.get("scope").and_then(|v| v.as_str()),
-                    item.get("target_ids").and_then(|v| v.as_str()),
+                    item.get("prompt_type")
+                        .or_else(|| item.get("promptType"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("undefined"),
                     item.get("content").and_then(|v| v.as_str()),
                     entries_str,
                     item.get("condense_prompt_entries")

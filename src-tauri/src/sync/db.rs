@@ -1751,13 +1751,12 @@ fn apply_core_snapshot(conn: &mut DbConnection, payload: &[u8]) -> Result<(), St
 
     for template in snapshot.prompt_templates {
         tx.execute(
-            r#"INSERT OR REPLACE INTO prompt_templates (id, name, scope, target_ids, content, entries, condense_prompt_entries, created_at, updated_at)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"#,
+            r#"INSERT OR REPLACE INTO prompt_templates (id, name, prompt_type, content, entries, condense_prompt_entries, created_at, updated_at)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"#,
             params![
                 template.id,
                 template.name,
-                template.scope,
-                template.target_ids,
+                template.prompt_type,
                 template.content,
                 template.entries,
                 template.condense_prompt_entries,
@@ -2587,19 +2586,18 @@ fn fetch_global_core(conn: &DbConnection) -> Result<GlobalCoreData, String> {
         .collect();
 
     // Prompt Templates
-    let mut stmt = conn.prepare("SELECT id, name, scope, target_ids, content, entries, condense_prompt_entries, created_at, updated_at FROM prompt_templates").map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    let mut stmt = conn.prepare("SELECT id, name, prompt_type, content, entries, condense_prompt_entries, created_at, updated_at FROM prompt_templates").map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
     let templates: Vec<PromptTemplate> = stmt
         .query_map([], |r| {
             Ok(PromptTemplate {
                 id: r.get(0)?,
                 name: r.get(1)?,
-                scope: r.get(2)?,
-                target_ids: r.get(3)?,
-                content: r.get(4)?,
-                entries: r.get(5)?,
-                condense_prompt_entries: r.get(6)?,
-                created_at: r.get(7)?,
-                updated_at: r.get(8)?,
+                prompt_type: r.get(2)?,
+                content: r.get(3)?,
+                entries: r.get(4)?,
+                condense_prompt_entries: r.get(5)?,
+                created_at: r.get(6)?,
+                updated_at: r.get(7)?,
             })
         })
         .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?
