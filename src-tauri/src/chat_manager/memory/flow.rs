@@ -2019,6 +2019,18 @@ async fn run_memory_tool_update(
     } else {
         1
     };
+    log_info(
+        app,
+        "dynamic_memory",
+        format!(
+            "memory tool loop configured recursive={} hard_cap={} initial_memories={} provider={} model={}",
+            recursive_loops_enabled,
+            max_loop_iterations,
+            session.memory_embeddings.len(),
+            provider_cred.provider_id,
+            model.name
+        ),
+    );
 
     for iteration in 0..max_loop_iterations {
         if cancel_token.is_some_and(|token| token.is_cancelled()) {
@@ -2032,6 +2044,17 @@ async fn run_memory_tool_update(
                 id.to_string()
             }
         });
+        log_info(
+            app,
+            "dynamic_memory",
+            format!(
+                "memory tool loop iteration {}/{} requesting tool calls current_memories={} request_id={}",
+                iteration + 1,
+                max_loop_iterations,
+                session.memory_embeddings.len(),
+                iteration_request_id.as_deref().unwrap_or("none")
+            ),
+        );
 
         let (calls, call_source) = request_memory_tool_calls(
             app,
@@ -2420,7 +2443,44 @@ async fn run_memory_tool_update(
         }
     }
 
-        if saw_done || !recursive_loops_enabled {
+        let skipped_results = tool_results
+            .iter()
+            .filter(|result| result.get("status").and_then(Value::as_str) == Some("skipped"))
+            .count();
+        log_info(
+            app,
+            "dynamic_memory",
+            format!(
+                "memory tool loop iteration {}/{} applied calls={} tool_results={} skipped_results={} memories_now={} saw_done={}",
+                iteration + 1,
+                max_loop_iterations,
+                tool_calls_json.len(),
+                tool_results.len(),
+                skipped_results,
+                session.memory_embeddings.len(),
+                saw_done
+            ),
+        );
+
+        if saw_done {
+            log_info(
+                app,
+                "dynamic_memory",
+                format!(
+                    "memory tool loop iteration {}/{} received done; stopping recursive loop",
+                    iteration + 1,
+                    max_loop_iterations
+                ),
+            );
+            break;
+        }
+
+        if !recursive_loops_enabled {
+            log_info(
+                app,
+                "dynamic_memory",
+                "memory tool loop recursive mode disabled; stopping after single pass",
+            );
             break;
         }
 
