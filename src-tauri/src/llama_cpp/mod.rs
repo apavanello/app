@@ -2564,8 +2564,20 @@ pub(crate) fn is_unified_memory() -> bool {
     desktop::context::is_unified_memory()
 }
 
+#[cfg(not(mobile))]
+pub(crate) fn supports_gpu_offload() -> bool {
+    desktop::engine::shared_backend()
+        .map(|backend| backend.supports_gpu_offload())
+        .unwrap_or(false)
+}
+
 #[cfg(mobile)]
 pub(crate) fn is_unified_memory() -> bool {
+    false
+}
+
+#[cfg(mobile)]
+pub(crate) fn supports_gpu_offload() -> bool {
     false
 }
 
