@@ -5,7 +5,6 @@ import {
   Copy,
   RotateCcw,
   Trash2,
-  X,
   Bug,
   Pin,
   PinOff,
@@ -144,6 +143,7 @@ export function MessageActionsBottomSheet({
   const [modelName, setModelName] = useState<string | null>(null);
   const [modelProviderId, setModelProviderId] = useState<string | null>(null);
   const [editAttachments, setEditAttachments] = useState<ImageAttachment[]>([]);
+  const [editingAttachmentId, setEditingAttachmentId] = useState<string | null>(null);
   const isSceneMessage = messageAction?.message.role === "scene";
   const isAssistantLikeMessage =
     messageAction?.message.role === "assistant" || messageAction?.message.role === "scene";
@@ -167,6 +167,7 @@ export function MessageActionsBottomSheet({
       setEditAttachments([...(messageAction.message.attachments ?? [])]);
     } else if (!messageAction) {
       setEditAttachments([]);
+      setEditingAttachmentId(null);
     }
   }, [messageAction]);
 
@@ -193,6 +194,8 @@ export function MessageActionsBottomSheet({
   const firstTokenMs = messageAction?.message.usage?.firstTokenMs;
   const tokensPerSecond = messageAction?.message.usage?.tokensPerSecond;
   const loadedEditAttachments = useSessionAttachments(editAttachments);
+  const editingAttachment =
+    loadedEditAttachments.find((attachment) => attachment.id === editingAttachmentId) ?? null;
   const canOpenDebug =
     isDevelopmentMode() &&
     Boolean(characterId && sessionId) &&
@@ -210,20 +213,21 @@ export function MessageActionsBottomSheet({
   };
 
   return (
-    <BottomMenu
-      isOpen={Boolean(messageAction)}
-      includeExitIcon={false}
-      onClose={() => closeMessageActions(true)}
-      title={
-        isSceneMessage
-          ? t("chats.message.sceneLabel")
-          : isAssistantLikeMessage
-            ? t("chats.actions.assistantMessage")
-            : t("chats.actions.userMessage")
-      }
-    >
-      {messageAction && (
-        <div className="text-white">
+    <>
+      <BottomMenu
+        isOpen={Boolean(messageAction)}
+        includeExitIcon={false}
+        onClose={() => closeMessageActions(true)}
+        title={
+          isSceneMessage
+            ? t("chats.message.sceneLabel")
+            : isAssistantLikeMessage
+              ? t("chats.actions.assistantMessage")
+              : t("chats.actions.userMessage")
+        }
+      >
+        {messageAction && (
+          <div className="text-white">
           {/* Token usage */}
           {!isSceneMessage && messageAction.message.usage && (
             <div className="mb-4 space-y-2">
@@ -360,6 +364,7 @@ export function MessageActionsBottomSheet({
                     setMessageAction({ message: messageAction.message, mode: "edit" });
                     setEditDraft(messageAction.message.content);
                     setEditAttachments([...(messageAction.message.attachments ?? [])]);
+                    setEditingAttachmentId(null);
                   }}
                 />
               )}
@@ -507,54 +512,39 @@ export function MessageActionsBottomSheet({
               />
               {loadedEditAttachments.length > 0 && (
                 <div className="space-y-2">
-                  <div className="text-xs font-medium uppercase tracking-wide text-white/50">
-                    Attachments
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/45">
+                      Attachments
+                    </div>
+                    <div className="text-[11px] tabular-nums text-white/35">
+                      {loadedEditAttachments.length}
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="-mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1">
                     {loadedEditAttachments.map((attachment) => (
-                      <div
+                      <button
                         key={attachment.id}
+                        type="button"
+                        onClick={() => setEditingAttachmentId(attachment.id)}
                         className={cn(
-                          radius.md,
-                          "relative overflow-hidden border border-white/15 bg-black/20",
+                          "relative block h-28 w-28 shrink-0 overflow-hidden border border-white/10 bg-black/30 transition",
+                          "hover:border-white/25 focus:outline-none focus-visible:border-white/30",
+                          radius.lg,
                         )}
+                        aria-label={attachment.filename || t("chats.message.attachedImage")}
                       >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setEditAttachments((prev) =>
-                              prev.filter((candidate) => candidate.id !== attachment.id),
-                            )
-                          }
-                          className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-black/75 text-white/80 transition hover:bg-black hover:text-white"
-                          aria-label={`Remove ${attachment.filename || "attachment"}`}
-                        >
-                          <X size={14} />
-                        </button>
                         {attachment.data ? (
                           <img
                             src={attachment.data}
                             alt={attachment.filename || t("chats.message.attachedImage")}
-                            className="max-h-36 max-w-full object-contain"
-                            style={{
-                              maxWidth:
-                                attachment.width && attachment.width > 220
-                                  ? 220
-                                  : attachment.width || 220,
-                            }}
+                            className="h-full w-full object-cover"
                           />
                         ) : (
-                          <div
-                            className="flex items-center justify-center bg-white/5"
-                            style={{
-                              width: Math.min(attachment.width || 150, 220),
-                              height: Math.min(attachment.height || 100, 144),
-                            }}
-                          >
+                          <div className="flex h-full w-full items-center justify-center">
                             <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-white/60" />
                           </div>
                         )}
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -567,6 +557,7 @@ export function MessageActionsBottomSheet({
                     setMessageAction({ message: messageAction.message, mode: "view" });
                     setEditDraft(messageAction.message.content);
                     setEditAttachments([...(messageAction.message.attachments ?? [])]);
+                    setEditingAttachmentId(null);
                   }}
                   className={cn(
                     "flex-1 px-4 py-3 text-sm font-medium text-white/70 transition",
@@ -596,7 +587,80 @@ export function MessageActionsBottomSheet({
             </div>
           )}
         </div>
-      )}
-    </BottomMenu>
+        )}
+      </BottomMenu>
+
+      <BottomMenu
+        isOpen={Boolean(editingAttachment)}
+        includeExitIcon={false}
+        onClose={() => setEditingAttachmentId(null)}
+        title={t("chats.message.attachedImage")}
+      >
+        {editingAttachment && (
+          <div className="space-y-4 text-white">
+            <div
+              className={cn(
+                radius.lg,
+                "flex items-center justify-center overflow-hidden border border-white/10 bg-black/30",
+              )}
+            >
+              {editingAttachment.data ? (
+                <img
+                  src={editingAttachment.data}
+                  alt={editingAttachment.filename || t("chats.message.attachedImage")}
+                  className="max-h-[50vh] w-auto max-w-full object-contain"
+                />
+              ) : (
+                <div className="flex min-h-48 w-full items-center justify-center">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-white/60" />
+                </div>
+              )}
+            </div>
+            {editingAttachment.filename && (
+              <div className="space-y-1">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/45">
+                  Filename
+                </div>
+                <div className="line-clamp-3 break-words text-sm text-white/75">
+                  {editingAttachment.filename}
+                </div>
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setEditingAttachmentId(null)}
+                className={cn(
+                  "flex-1 px-4 py-3 text-sm font-medium text-white/70 transition",
+                  "border border-white/10 bg-white/5",
+                  "hover:bg-white/10 hover:text-white",
+                  radius.lg,
+                )}
+              >
+                {t("common.buttons.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const attachmentId = editingAttachment.id;
+                  setEditAttachments((prev) =>
+                    prev.filter((candidate) => candidate.id !== attachmentId),
+                  );
+                  setEditingAttachmentId(null);
+                }}
+                className={cn(
+                  "flex-1 px-4 py-3 text-sm font-semibold text-red-100 transition",
+                  "border border-red-500/30 bg-red-500/20",
+                  "hover:bg-red-500/30",
+                  radius.lg,
+                )}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        )}
+      </BottomMenu>
+    </>
   );
 }

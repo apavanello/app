@@ -2398,11 +2398,19 @@ export function ChatConversationPage() {
             </div>
           ) : generatedScenePrompt ? (
             <div className={cn("border border-white/10 bg-white/5 p-4", radius.lg)}>
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/45">
-                {t("chats.sceneImage.suggestedPrompt")}
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/45">
+                  {t("chats.sceneImage.suggestedPrompt")}
+                </div>
+                <div className="text-[11px] text-white/35">
+                  {generatedScenePrompt.length.toLocaleString()} chars
+                </div>
               </div>
-              <p className="max-h-[36vh] overflow-y-auto whitespace-pre-wrap pr-1 text-sm leading-relaxed text-white/90">
+              <p className="line-clamp-6 whitespace-pre-wrap text-sm leading-relaxed text-white/82">
                 {generatedScenePrompt}
+              </p>
+              <p className="mt-3 text-xs text-white/45">
+                Use {t("chats.sceneImage.editPrompt").toLowerCase()} to review or change the full prompt.
               </p>
             </div>
           ) : null}
