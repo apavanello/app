@@ -411,7 +411,7 @@ function LorebookListView({
     <div className="flex h-full flex-col overflow-hidden text-fg/80">
       {/* Search Bar */}
       {lorebooks.length > 0 && (
-        <div className="px-4 pb-2 pt-2">
+        <div className="px-4 py-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg/40" />
             <input
@@ -424,7 +424,7 @@ function LorebookListView({
         </div>
       )}
 
-      <main className="flex-1 overflow-y-auto px-4 py-6">
+      <main className="flex-1 overflow-y-auto px-4 pb-6">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -724,7 +724,7 @@ function EntryListView({
   return (
     <div className="flex h-full flex-col text-fg/80 overflow-hidden">
       {entries.length > 0 && (
-        <div className="px-4 pb-2 pt-2">
+        <div className="px-4 py-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg/40" />
             <input
@@ -737,7 +737,7 @@ function EntryListView({
         </div>
       )}
 
-      <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 pt-8 pb-6">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-6">
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -1188,7 +1188,7 @@ export function LorebookEditor() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-surface pt-[calc(env(safe-area-inset-top))]">
+    <div className="flex h-full flex-col bg-surface pt-[calc(72px+env(safe-area-inset-top))]">
       <TopNav
         currentPath={location.pathname + location.search}
         titleOverride={pageTitle}
