@@ -45,6 +45,10 @@ pub fn default_help_me_reply_conversational_prompt() -> String {
     join_entries(&default_help_me_reply_conversational_entries())
 }
 
+pub fn default_lorebook_entry_writer_prompt() -> String {
+    join_entries(&default_lorebook_entry_writer_entries())
+}
+
 pub fn default_group_chat_system_prompt_template() -> String {
     join_entries(&default_group_chat_entries())
 }
@@ -545,6 +549,67 @@ pub fn default_help_me_reply_conversational_entries() -> Vec<SystemPromptEntry> 
             system_prompt: true,
         conditions: None,
         prompt_entry_payload: None,
+        },
+    ]
+}
+
+pub fn default_lorebook_entry_writer_entries() -> Vec<SystemPromptEntry> {
+    vec![
+        SystemPromptEntry {
+            id: "lorebook_entry_task".to_string(),
+            name: "Task".to_string(),
+            role: PromptEntryRole::System,
+            content: "You extract one durable lorebook entry from selected chat messages. Produce a single entry draft only when the selected text establishes stable canon worth storing for future prompt injection.".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: true,
+            conditions: None,
+            prompt_entry_payload: None,
+        },
+        SystemPromptEntry {
+            id: "lorebook_entry_inputs".to_string(),
+            name: "Inputs".to_string(),
+            role: PromptEntryRole::System,
+            content: "# Lorebook Context\nLorebook: {{lorebook_name}}\nCharacter: {{character_name}}\nSession: {{session_title}}\n\n# Existing Lorebook Entries\n{{existing_entries}}\n\n# Optional Direction\n{{direction_prompt}}\n\n# Selected Messages\n{{selected_messages}}".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: true,
+            conditions: None,
+            prompt_entry_payload: None,
+        },
+        SystemPromptEntry {
+            id: "lorebook_entry_rules".to_string(),
+            name: "Rules".to_string(),
+            role: PromptEntryRole::System,
+            content: "Rules:\n- Extract only one entry.\n- Prefer stable facts, established locations, institutions, items, relationships, world rules, or recurring circumstances.\n- Do not store transient banter, throwaway phrasing, or short-lived intentions unless clearly established as canon.\n- Avoid duplicating facts already covered by existing entries.\n- Make the content self-contained and useful when injected later without the original chat transcript.\n- Choose concise but searchable keywords.\n- Set alwaysActive to true only when the fact is broad canon that should apply almost everywhere.".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: true,
+            conditions: None,
+            prompt_entry_payload: None,
+        },
+        SystemPromptEntry {
+            id: "lorebook_entry_output".to_string(),
+            name: "Output".to_string(),
+            role: PromptEntryRole::System,
+            content: "Use the write_lorebook_entry tool when an entry should be created. Use the no_entry tool when the selected messages do not justify a durable lorebook entry. Do not output commentary outside the tool result.".to_string(),
+            enabled: true,
+            injection_position: PromptEntryPosition::Relative,
+            injection_depth: 0,
+            conditional_min_messages: None,
+            interval_turns: None,
+            system_prompt: true,
+            conditions: None,
+            prompt_entry_payload: None,
         },
     ]
 }

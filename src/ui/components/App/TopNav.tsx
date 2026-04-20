@@ -127,6 +127,10 @@ export function TopNav({
       { match: (p) => p === "/settings/developer", titleKey: "common.nav.developer" },
       { match: (p) => p === "/settings/advanced", titleKey: "common.nav.advanced" },
       { match: (p) => p === "/settings/characters", titleKey: "common.nav.characters" },
+      {
+        match: (p) => p === "/settings/advanced/lorebook-entry-generator",
+        titleKey: "common.nav.lorebookEntryGenerator",
+      },
       { match: (p) => p.includes("/lorebook"), titleKey: "common.nav.lorebooks" },
       { match: (p) => p === "/settings/personas", titleKey: "common.nav.personas" },
       { match: (p) => p === "/settings/advanced/memory", titleKey: "common.nav.dynamicMemory" },
@@ -280,6 +284,7 @@ export function TopNav({
     if (basePath === "/settings/models" && !hasAdvancedView) return true;
     if (basePath === "/settings/prompts") return true;
     if (/^\/settings\/characters\/[^/]+\/templates$/.test(basePath)) return true;
+    if (basePath === "/settings/advanced/lorebook-entry-generator") return false;
     if (basePath.includes("/lorebook")) return true;
     return false;
   }, [basePath, hasAdvancedView]);
@@ -325,7 +330,9 @@ export function TopNav({
 
   const isCenteredTitle = useMemo(() => {
     return (
-      (basePath.startsWith("/settings") && !basePath.includes("/lorebook")) ||
+      (basePath.startsWith("/settings") &&
+        (!basePath.includes("/lorebook") ||
+          basePath === "/settings/advanced/lorebook-entry-generator")) ||
       (basePath.startsWith("/personas/") && basePath.endsWith("/edit"))
     );
   }, [basePath]);

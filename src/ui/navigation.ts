@@ -57,6 +57,7 @@ export const Routes = {
   },
   settings: "/settings",
   settingsConvert: "/settings/convert",
+  settingsAdvancedLorebookEntryGenerator: "/settings/advanced/lorebook-entry-generator",
   settingsUsage: "/settings/usage",
   settingsUsageActivity: "/settings/usage/activity",
   settingsModels: "/settings/models",
@@ -68,8 +69,18 @@ export const Routes = {
   createPersona: "/create/persona",
   personaEdit: (personaId: string) => `/personas/${personaId}/edit`,
   characterLorebook: (characterId: string) => `/settings/characters/${characterId}/lorebook`,
+  characterLorebookGenerate: (
+    characterId: string,
+    lorebookId: string,
+    sessionId?: string | null,
+  ) => {
+    const params = new URLSearchParams({ lorebookId });
+    if (sessionId) params.set("sessionId", sessionId);
+    return `/settings/characters/${characterId}/lorebook/generate?${params.toString()}`;
+  },
   characterLorebookPreview: (characterId: string, lorebookId: string) =>
     `/settings/characters/${characterId}/lorebook/preview?lorebookId=${encodeURIComponent(lorebookId)}`,
+  libraryLorebookGenerate: (lorebookId: string) => `/library/lorebooks/${lorebookId}/generate`,
   libraryLorebookPreview: (lorebookId: string) => `/library/lorebooks/${lorebookId}/preview`,
   sync: "/settings/sync",
   // Group Chat routes
@@ -176,6 +187,10 @@ export const BACK_MAPPINGS: BackMapping[] = [
     target: "/settings/advanced",
   },
   { match: (p) => p.startsWith("/settings/advanced/help-me-reply"), target: "/settings/advanced" },
+  {
+    match: (p) => p.startsWith("/settings/advanced/lorebook-entry-generator"),
+    target: "/settings/advanced",
+  },
   { match: (p) => p.startsWith("/settings/embedding-download"), target: "/settings/advanced" },
   { match: (p) => p.startsWith("/settings/embedding-test"), target: "/settings/advanced" },
   { match: (p) => p.startsWith("/settings/security"), target: Routes.settings },

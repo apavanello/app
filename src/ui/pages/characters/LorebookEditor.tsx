@@ -9,6 +9,7 @@ import {
   Download,
   Loader2,
   Search,
+  Sparkles,
   GripVertical,
   TestTube2,
   X,
@@ -1048,6 +1049,7 @@ export function LorebookEditor() {
   const groupSessionId = groupSessionIdParam ?? searchParams.get("groupSessionId");
 
   const activeLorebookId = searchParams.get("lorebookId");
+  const currentSessionId = searchParams.get("sessionId");
 
   const [lorebooks, setLorebooks] = useState<Lorebook[]>([]);
   const [assignedLorebookIds, setAssignedLorebookIds] = useState<Set<string>>(new Set());
@@ -1070,6 +1072,14 @@ export function LorebookEditor() {
     () => lorebooks.find((l) => l.id === activeLorebookId) ?? null,
     [lorebooks, activeLorebookId],
   );
+  const buildLorebookSearchParams = (lorebookId: string) => {
+    const next = new URLSearchParams();
+    next.set("lorebookId", lorebookId);
+    if (currentSessionId) {
+      next.set("sessionId", currentSessionId);
+    }
+    return next;
+  };
   const target = useMemo(() => {
     if (characterId) return { type: "character" as const, id: characterId };
     if (groupSessionId) return { type: "groupSession" as const, id: groupSessionId };
@@ -1179,7 +1189,7 @@ export function LorebookEditor() {
       } else {
         await setGroupSessionLorebooks(target.id, Array.from(next));
       }
-      setSearchParams({ lorebookId: created.id });
+      setSearchParams(buildLorebookSearchParams(created.id));
     } catch (error) {
       console.error("Failed to create lorebook:", error);
     }
@@ -1201,7 +1211,7 @@ export function LorebookEditor() {
   };
 
   const handleSelectLorebook = (lorebookId: string) => {
-    setSearchParams({ lorebookId });
+    setSearchParams(buildLorebookSearchParams(lorebookId));
   };
 
   const openLorebookSettings = () => {
@@ -1453,6 +1463,25 @@ export function LorebookEditor() {
         rightAction={
           activeLorebook ? (
             <div className="flex items-center gap-1">
+              {target?.type === "character" ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(
+                      Routes.characterLorebookGenerate(
+                        target.id,
+                        activeLorebook.id,
+                        currentSessionId,
+                      ),
+                    )
+                  }
+                  className="flex items-center px-[0.6em] py-[0.3em] justify-center rounded-full text-fg/70 hover:text-fg hover:bg-fg/10 transition"
+                  aria-label="Generate lorebook entry"
+                  title="Generate lorebook entry"
+                >
+                  <Sparkles size={18} className="text-fg" />
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={openLorebookSettings}

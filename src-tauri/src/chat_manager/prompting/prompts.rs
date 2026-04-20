@@ -20,6 +20,7 @@ pub const APP_DYNAMIC_MEMORY_LOCAL_TEMPLATE_ID: &str = "prompt_app_dynamic_memor
 pub const APP_HELP_ME_REPLY_TEMPLATE_ID: &str = "prompt_app_help_me_reply";
 pub const APP_HELP_ME_REPLY_CONVERSATIONAL_TEMPLATE_ID: &str =
     "prompt_app_help_me_reply_conversational";
+pub const APP_LOREBOOK_ENTRY_WRITER_TEMPLATE_ID: &str = "prompt_app_lorebook_entry_writer";
 pub const APP_GROUP_CHAT_TEMPLATE_ID: &str = "prompt_app_group_chat";
 pub const APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_ID: &str = "prompt_app_group_chat_roleplay";
 pub const APP_AVATAR_GENERATION_TEMPLATE_ID: &str = "prompt_app_avatar_generation";
@@ -34,6 +35,7 @@ const APP_DYNAMIC_MEMORY_TEMPLATE_NAME: &str = "Dynamic Memory: Memory Manager";
 const APP_DYNAMIC_MEMORY_LOCAL_TEMPLATE_NAME: &str = "Dynamic Memory: Memory Manager (Local LLM)";
 const APP_HELP_ME_REPLY_TEMPLATE_NAME: &str = "Reply Helper";
 const APP_HELP_ME_REPLY_CONVERSATIONAL_TEMPLATE_NAME: &str = "Reply Helper (Conversational)";
+const APP_LOREBOOK_ENTRY_WRITER_TEMPLATE_NAME: &str = "Lorebook Entry Writer";
 const APP_GROUP_CHAT_TEMPLATE_NAME: &str = "Group Chat (Conversation)";
 const APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_NAME: &str = "Group Chat (Roleplay)";
 const APP_AVATAR_GENERATION_TEMPLATE_NAME: &str = "Avatar Generation";
@@ -58,6 +60,7 @@ pub fn template_prompt_type_from_id(id: &str) -> PromptTemplateType {
         APP_HELP_ME_REPLY_CONVERSATIONAL_TEMPLATE_ID => {
             PromptTemplateType::ReplyHelperConversational
         }
+        APP_LOREBOOK_ENTRY_WRITER_TEMPLATE_ID => PromptTemplateType::LorebookEntryWriter,
         APP_AVATAR_GENERATION_TEMPLATE_ID => PromptTemplateType::AvatarGeneration,
         APP_AVATAR_EDIT_TEMPLATE_ID => PromptTemplateType::AvatarEditRequest,
         APP_SCENE_GENERATION_TEMPLATE_ID => PromptTemplateType::SceneGeneration,
@@ -537,6 +540,7 @@ fn prompt_type_to_str(prompt_type: PromptTemplateType) -> &'static str {
         PromptTemplateType::DynamicMemoryManager => "dynamicMemoryManager",
         PromptTemplateType::ReplyHelperRoleplay => "replyHelperRoleplay",
         PromptTemplateType::ReplyHelperConversational => "replyHelperConversational",
+        PromptTemplateType::LorebookEntryWriter => "lorebookEntryWriter",
         PromptTemplateType::AvatarGeneration => "avatarGeneration",
         PromptTemplateType::AvatarEditRequest => "avatarEditRequest",
         PromptTemplateType::SceneGeneration => "sceneGeneration",
@@ -555,6 +559,9 @@ fn str_to_prompt_type(s: &str) -> Result<PromptTemplateType, String> {
         "dynamicMemoryManager" => Ok(PromptTemplateType::DynamicMemoryManager),
         "replyHelperRoleplay" => Ok(PromptTemplateType::ReplyHelperRoleplay),
         "replyHelperConversational" => Ok(PromptTemplateType::ReplyHelperConversational),
+        "lorebookEntryWriter" | "lorebook_entry_writer" => {
+            Ok(PromptTemplateType::LorebookEntryWriter)
+        }
         "avatarGeneration" => Ok(PromptTemplateType::AvatarGeneration),
         "avatarEditRequest" => Ok(PromptTemplateType::AvatarEditRequest),
         "sceneGeneration" => Ok(PromptTemplateType::SceneGeneration),
@@ -579,7 +586,7 @@ fn row_to_template(row: &rusqlite::Row<'_>) -> Result<SystemPromptTemplate, rusq
     let updated_at: u64 = row.get(7)?;
 
     let prompt_type =
-        str_to_prompt_type(&prompt_type_str).map_err(|_| rusqlite::Error::InvalidQuery)?;
+        str_to_prompt_type(&prompt_type_str).unwrap_or(PromptTemplateType::Undefined);
     let entries: Vec<SystemPromptEntry> = serde_json::from_str(&entries_json).unwrap_or_default();
 
     Ok(SystemPromptTemplate {
@@ -598,6 +605,7 @@ pub fn load_templates(app: &AppHandle) -> Result<Vec<SystemPromptTemplate>, Stri
     let _ = ensure_app_default_template(app)?;
     let _ = ensure_local_roleplay_template(app)?;
     ensure_dynamic_memory_templates(app)?;
+    ensure_lorebook_entry_writer_template(app)?;
     ensure_group_chat_templates(app)?;
     let conn = open_db(app)?;
     let mut stmt = conn
@@ -1035,6 +1043,7 @@ pub fn is_app_default_template(id: &str) -> bool {
         || id == APP_DYNAMIC_MEMORY_LOCAL_TEMPLATE_ID
         || id == APP_HELP_ME_REPLY_TEMPLATE_ID
         || id == APP_HELP_ME_REPLY_CONVERSATIONAL_TEMPLATE_ID
+        || id == APP_LOREBOOK_ENTRY_WRITER_TEMPLATE_ID
         || id == APP_GROUP_CHAT_TEMPLATE_ID
         || id == APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_ID
         || id == APP_AVATAR_GENERATION_TEMPLATE_ID
@@ -1199,6 +1208,43 @@ pub fn ensure_help_me_reply_template(app: &AppHandle) -> Result<(), String> {
             get_base_prompt_entries(PromptType::HelpMeReplyConversationalPrompt),
         );
     }
+    Ok(())
+}
+
+pub fn ensure_lorebook_entry_writer_template(app: &AppHandle) -> Result<(), String> {
+    if get_template(app, APP_LOREBOOK_ENTRY_WRITER_TEMPLATE_ID)?.is_none() {
+        let conn = open_db(app)?;
+        let now = now();
+        let content = get_base_prompt(PromptType::LorebookEntryWriterPrompt);
+        let entries = get_base_prompt_entries(PromptType::LorebookEntryWriterPrompt);
+        let entries_json = serde_json::to_string(&entries)
+            .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+        conn.execute(
+            "INSERT OR IGNORE INTO prompt_templates (id, name, prompt_type, content, entries, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+            params![
+                APP_LOREBOOK_ENTRY_WRITER_TEMPLATE_ID,
+                APP_LOREBOOK_ENTRY_WRITER_TEMPLATE_NAME,
+                prompt_type_to_str(PromptTemplateType::LorebookEntryWriter),
+                content,
+                entries_json,
+                now
+            ],
+        )
+        .map_err(|e| crate::utils::err_to_string(module_path!(), line!(), e))?;
+    } else {
+        let _ = maybe_backfill_entries(
+            app,
+            APP_LOREBOOK_ENTRY_WRITER_TEMPLATE_ID,
+            PromptType::LorebookEntryWriterPrompt,
+            get_base_prompt_entries(PromptType::LorebookEntryWriterPrompt),
+        );
+        let _ = maybe_backfill_template_name(
+            app,
+            APP_LOREBOOK_ENTRY_WRITER_TEMPLATE_ID,
+            APP_LOREBOOK_ENTRY_WRITER_TEMPLATE_NAME,
+        );
+    }
+
     Ok(())
 }
 
@@ -1476,6 +1522,22 @@ pub fn reset_help_me_reply_conversational_template(
     update_template(
         app,
         APP_HELP_ME_REPLY_CONVERSATIONAL_TEMPLATE_ID.to_string(),
+        None,
+        None,
+        Some(content.clone()),
+        Some(entries),
+        None,
+    )
+}
+
+pub fn reset_lorebook_entry_writer_template(
+    app: &AppHandle,
+) -> Result<SystemPromptTemplate, String> {
+    let content = get_base_prompt(PromptType::LorebookEntryWriterPrompt);
+    let entries = get_base_prompt_entries(PromptType::LorebookEntryWriterPrompt);
+    update_template(
+        app,
+        APP_LOREBOOK_ENTRY_WRITER_TEMPLATE_ID.to_string(),
         None,
         None,
         Some(content.clone()),

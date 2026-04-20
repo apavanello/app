@@ -38,6 +38,7 @@ import { ChangelogPage } from "./ui/pages/settings/ChangelogPage";
 import { AdvancedPage } from "./ui/pages/settings/AdvancedPage";
 import { CreationHelperPage as AICreationHelperPage } from "./ui/pages/settings/CreationHelperPage";
 import { HelpMeReplyPage } from "./ui/pages/settings/HelpMeReplyPage";
+import { LorebookEntryGeneratorPage } from "./ui/pages/settings/LorebookEntryGeneratorPage";
 import { HostApiPage } from "./ui/pages/settings/HostApiPage";
 import { VoicesPage } from "./ui/pages/settings/VoicesPage";
 import { DynamicMemoryPage } from "./ui/pages/settings/DynamicMemoryPage";
@@ -69,6 +70,7 @@ import { SearchPage } from "./ui/pages/search";
 import { LibraryPage } from "./ui/pages/library/LibraryPage";
 import { AvatarLibraryPickerPage } from "./ui/pages/library/ImageLibraryPage";
 import { StandaloneLorebookEditor } from "./ui/pages/library/StandaloneLorebookEditor";
+import { LorebookEntryGeneratorFlowPage } from "./ui/pages/LorebookEntryGeneratorFlowPage";
 import { LorebookTriggerPreviewPage } from "./ui/pages/LorebookTriggerPreviewPage";
 import { SyncPage } from "./ui/pages/sync/SyncPage";
 import {
@@ -739,9 +741,9 @@ function AppContent() {
   const isLorebookEditorRoute = useMemo(
     () =>
       location.pathname.startsWith("/library/lorebooks/") ||
-      /^\/settings\/characters\/[^/]+\/lorebook(\/preview)?$/.test(location.pathname) ||
-      /^\/group-chats\/groups\/[^/]+\/lorebook(\/preview)?$/.test(location.pathname) ||
-      /^\/group-chats\/[^/]+\/lorebook(\/preview)?$/.test(location.pathname),
+      /^\/settings\/characters\/[^/]+\/lorebook(\/preview|\/generate)?$/.test(location.pathname) ||
+      /^\/group-chats\/groups\/[^/]+\/lorebook(\/preview|\/generate)?$/.test(location.pathname) ||
+      /^\/group-chats\/[^/]+\/lorebook(\/preview|\/generate)?$/.test(location.pathname),
     [location.pathname],
   );
   const isTemplateEditorRoute = useMemo(
@@ -1154,6 +1156,10 @@ function AppContent() {
               />
               <Route path="/library/lorebooks/:lorebookId" element={<StandaloneLorebookEditor />} />
               <Route
+                path="/library/lorebooks/:lorebookId/generate"
+                element={<LorebookEntryGeneratorFlowPage />}
+              />
+              <Route
                 path="/library/lorebooks/:lorebookId/preview"
                 element={<LorebookTriggerPreviewPage />}
               />
@@ -1181,6 +1187,10 @@ function AppContent() {
               <Route path="/settings/advanced/memory" element={<DynamicMemoryPage />} />
               <Route path="/settings/advanced/creation-helper" element={<AICreationHelperPage />} />
               <Route path="/settings/advanced/help-me-reply" element={<HelpMeReplyPage />} />
+              <Route
+                path="/settings/advanced/lorebook-entry-generator"
+                element={<LorebookEntryGeneratorPage />}
+              />
               <Route path="/settings/advanced/host-api" element={<HostApiPage />} />
               <Route path="/settings/embedding-download" element={<EmbeddingDownloadPage />} />
               <Route path="/settings/embedding-test" element={<EmbeddingTestPage />} />
@@ -1227,6 +1237,10 @@ function AppContent() {
               <Route
                 path="/settings/characters/:characterId/lorebook"
                 element={<LorebookEditor />}
+              />
+              <Route
+                path="/settings/characters/:characterId/lorebook/generate"
+                element={<LorebookEntryGeneratorFlowPage />}
               />
               <Route
                 path="/settings/characters/:characterId/lorebook/preview"

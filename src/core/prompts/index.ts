@@ -101,6 +101,10 @@ export async function resetHelpMeReplyConversationalTemplate(): Promise<SystemPr
   return await invoke<SystemPromptTemplate>("reset_help_me_reply_conversational_template");
 }
 
+export async function resetLorebookEntryWriterTemplate(): Promise<SystemPromptTemplate> {
+  return await invoke<SystemPromptTemplate>("reset_lorebook_entry_writer_template");
+}
+
 export async function resetAvatarGenerationTemplate(): Promise<SystemPromptTemplate> {
   return await invoke<SystemPromptTemplate>("reset_avatar_generation_template");
 }

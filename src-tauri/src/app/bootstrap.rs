@@ -229,6 +229,14 @@ fn run_bootstrap_tasks(app: &tauri::AppHandle) {
         );
     }
 
+    if let Err(err) = chat_manager::prompts::ensure_lorebook_entry_writer_template(app) {
+        utils::log_error(
+            app,
+            "bootstrap",
+            format!("Failed to ensure lorebook entry writer template: {}", err),
+        );
+    }
+
     if let Err(err) = chat_manager::prompts::ensure_dynamic_memory_templates(app) {
         utils::log_error(
             app,

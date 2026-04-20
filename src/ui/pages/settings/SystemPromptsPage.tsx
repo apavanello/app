@@ -211,6 +211,7 @@ function normalizeImportedPromptTemplatePayload(input: {
     input.promptType === "dynamicMemoryManager" ||
     input.promptType === "replyHelperRoleplay" ||
     input.promptType === "replyHelperConversational" ||
+    input.promptType === "lorebookEntryWriter" ||
     input.promptType === "avatarGeneration" ||
     input.promptType === "avatarEditRequest" ||
     input.promptType === "sceneGeneration" ||

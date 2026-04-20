@@ -88,6 +88,7 @@ export const PromptTemplateTypeSchema = z.enum([
   "dynamicMemoryManager",
   "replyHelperRoleplay",
   "replyHelperConversational",
+  "lorebookEntryWriter",
   "avatarGeneration",
   "avatarEditRequest",
   "sceneGeneration",
@@ -2561,6 +2562,10 @@ export const SettingsSchema = z.object({
       helpMeReplyStreaming: z.boolean().optional(),
       helpMeReplyMaxTokens: z.number().optional(),
       helpMeReplyStyle: z.enum(["conversational", "roleplay"]).optional(),
+      lorebookEntryGeneratorModelId: z.string().optional(),
+      lorebookEntryGeneratorStructuredFallbackFormat:
+        DynamicMemoryStructuredFallbackFormatSchema.optional(),
+      lorebookEntryGeneratorPromptTemplateId: z.string().optional(),
       manualModeContextWindow: z.number().optional(),
       embeddingMaxTokens: z.number().optional(), // 1024, 2048, or 4096
       embeddingModelVersion: z.enum(["v2", "v3"]).optional(),
@@ -2588,6 +2593,7 @@ export function createDefaultSettings(): Settings {
     appState: createDefaultAppState(),
     advancedSettings: {
       dynamicMemoryStructuredFallbackFormat: "xml",
+      lorebookEntryGeneratorStructuredFallbackFormat: "json",
       dynamicMemoryLlamaSamplerOverwriteEnabled: true,
       avatarGenerationEnabled: true,
       creationHelperEnabled: false,

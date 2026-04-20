@@ -207,6 +207,41 @@ fn reply_helper_variables() -> Vec<PromptVariableDefinition> {
     ]
 }
 
+fn lorebook_entry_writer_variables() -> Vec<PromptVariableDefinition> {
+    vec![
+        variable(
+            "{{lorebook_name}}",
+            "Lorebook Name",
+            "Name of the target lorebook.",
+        ),
+        variable(
+            "{{character_name}}",
+            "Character Name",
+            "Name of the character whose session is being mined.",
+        ),
+        variable(
+            "{{session_title}}",
+            "Session Title",
+            "Title of the selected session.",
+        ),
+        variable(
+            "{{selected_messages}}",
+            "Selected Messages",
+            "Chronological transcript of the selected messages.",
+        ),
+        variable(
+            "{{direction_prompt}}",
+            "Direction Prompt",
+            "Optional user guidance for the extraction focus.",
+        ),
+        variable(
+            "{{existing_entries}}",
+            "Existing Entries",
+            "Existing lorebook entry summaries for duplicate avoidance.",
+        ),
+    ]
+}
+
 fn avatar_generation_variables() -> Vec<PromptVariableDefinition> {
     vec![
         variable(
@@ -368,6 +403,7 @@ pub fn prompt_type_label(prompt_type: PromptTemplateType) -> &'static str {
         PromptTemplateType::DynamicMemoryManager => "Dynamic Memory Manager",
         PromptTemplateType::ReplyHelperRoleplay => "Reply Helper (Roleplay)",
         PromptTemplateType::ReplyHelperConversational => "Reply Helper (Conversational)",
+        PromptTemplateType::LorebookEntryWriter => "Lorebook Entry Writer",
         PromptTemplateType::AvatarGeneration => "Avatar Generation",
         PromptTemplateType::AvatarEditRequest => "Avatar Edit Request",
         PromptTemplateType::SceneGeneration => "Scene Generation",
@@ -400,6 +436,7 @@ pub fn allowed_variables_for_prompt_type(
         PromptTemplateType::DynamicMemoryManager => dynamic_memory_manager_variables(),
         PromptTemplateType::ReplyHelperRoleplay => reply_helper_variables(),
         PromptTemplateType::ReplyHelperConversational => reply_helper_variables(),
+        PromptTemplateType::LorebookEntryWriter => lorebook_entry_writer_variables(),
         PromptTemplateType::AvatarGeneration => avatar_generation_variables(),
         PromptTemplateType::AvatarEditRequest => avatar_edit_request_variables(),
         PromptTemplateType::SceneGeneration => scene_generation_variables(),
@@ -450,6 +487,10 @@ pub fn required_variables_for_prompt_type(prompt_type: PromptTemplateType) -> Ve
                 "{{current_draft}}".to_string(),
             ]
         }
+        PromptTemplateType::LorebookEntryWriter => vec![
+            "{{selected_messages}}".to_string(),
+            "{{direction_prompt}}".to_string(),
+        ],
         PromptTemplateType::AvatarGeneration => vec!["{{avatar_request}}".to_string()],
         PromptTemplateType::AvatarEditRequest => vec![
             "{{current_avatar_prompt}}".to_string(),
@@ -518,6 +559,7 @@ pub fn build_parameter_engine() -> PromptParameterEngine {
         PromptTemplateType::DynamicMemoryManager,
         PromptTemplateType::ReplyHelperRoleplay,
         PromptTemplateType::ReplyHelperConversational,
+        PromptTemplateType::LorebookEntryWriter,
         PromptTemplateType::AvatarGeneration,
         PromptTemplateType::AvatarEditRequest,
         PromptTemplateType::SceneGeneration,

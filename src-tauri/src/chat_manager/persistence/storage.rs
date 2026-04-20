@@ -27,6 +27,7 @@ pub enum PromptType {
     DynamicSummaryPrompt,
     HelpMeReplyPrompt,
     HelpMeReplyConversationalPrompt,
+    LorebookEntryWriterPrompt,
     GroupChatPrompt,
     GroupChatRoleplayPrompt,
     AvatarGenerationPrompt,
@@ -48,6 +49,9 @@ pub fn get_base_prompt(prompt_type: PromptType) -> String {
         PromptType::HelpMeReplyPrompt => prompt_engine::default_help_me_reply_prompt(),
         PromptType::HelpMeReplyConversationalPrompt => {
             prompt_engine::default_help_me_reply_conversational_prompt()
+        }
+        PromptType::LorebookEntryWriterPrompt => {
+            prompt_engine::default_lorebook_entry_writer_prompt()
         }
         PromptType::GroupChatPrompt => prompt_engine::default_group_chat_system_prompt_template(),
         PromptType::GroupChatRoleplayPrompt => {
@@ -73,6 +77,9 @@ pub fn get_base_prompt_entries(prompt_type: PromptType) -> Vec<SystemPromptEntry
         PromptType::HelpMeReplyPrompt => prompt_engine::default_help_me_reply_entries(),
         PromptType::HelpMeReplyConversationalPrompt => {
             prompt_engine::default_help_me_reply_conversational_entries()
+        }
+        PromptType::LorebookEntryWriterPrompt => {
+            prompt_engine::default_lorebook_entry_writer_entries()
         }
         PromptType::GroupChatPrompt => prompt_engine::default_group_chat_entries(),
         PromptType::GroupChatRoleplayPrompt => prompt_engine::default_group_chat_roleplay_entries(),
@@ -181,6 +188,11 @@ fn default_settings() -> Settings {
             help_me_reply_streaming: None,
             help_me_reply_max_tokens: None,
             help_me_reply_style: None,
+            lorebook_entry_generator_model_id: None,
+            lorebook_entry_generator_structured_fallback_format: Some(
+                DynamicMemoryStructuredFallbackFormat::Json,
+            ),
+            lorebook_entry_generator_prompt_template_id: None,
             dynamic_memory: None,
             group_dynamic_memory: None,
             manual_mode_context_window: None,

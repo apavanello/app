@@ -49,6 +49,7 @@ import {
   resetGroupChatRoleplayTemplate,
   resetHelpMeReplyTemplate,
   resetHelpMeReplyConversationalTemplate,
+  resetLorebookEntryWriterTemplate,
   resetAvatarGenerationTemplate,
   resetAvatarEditTemplate,
   resetSceneGenerationTemplate,
@@ -76,6 +77,7 @@ import {
   APP_DYNAMIC_MEMORY_LOCAL_TEMPLATE_ID,
   APP_HELP_ME_REPLY_TEMPLATE_ID,
   APP_HELP_ME_REPLY_CONVERSATIONAL_TEMPLATE_ID,
+  APP_LOREBOOK_ENTRY_WRITER_TEMPLATE_ID,
   APP_GROUP_CHAT_TEMPLATE_ID,
   APP_GROUP_CHAT_ROLEPLAY_TEMPLATE_ID,
   APP_AVATAR_GENERATION_TEMPLATE_ID,
@@ -2743,6 +2745,8 @@ export function EditPromptTemplate() {
         updated = await resetHelpMeReplyTemplate();
       } else if (id === APP_HELP_ME_REPLY_CONVERSATIONAL_TEMPLATE_ID) {
         updated = await resetHelpMeReplyConversationalTemplate();
+      } else if (id === APP_LOREBOOK_ENTRY_WRITER_TEMPLATE_ID) {
+        updated = await resetLorebookEntryWriterTemplate();
       } else if (id === APP_AVATAR_GENERATION_TEMPLATE_ID) {
         updated = await resetAvatarGenerationTemplate();
       } else if (id === APP_AVATAR_EDIT_TEMPLATE_ID) {

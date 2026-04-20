@@ -31,6 +31,7 @@ export const enMessages = {
       dynamicMemory: "Dynamic Memory",
       creationHelper: "Creation Helper",
       helpMeReply: "Help Me Reply",
+      lorebookEntryGenerator: "Lorebook Entry Generator",
       editPersona: "Edit Persona",
       newTemplate: "New Template",
       editTemplate: "Edit Template",

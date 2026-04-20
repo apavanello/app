@@ -7,6 +7,7 @@ import {
   Star,
   Edit2,
   Search,
+  Sparkles,
   GripVertical,
   TestTube2,
   X,
@@ -801,6 +802,13 @@ export function StandaloneLorebookEditor() {
         onBackOverride={() => navigate("/library")}
         rightAction={
           <div className="flex items-center gap-1">
+            <button
+              onClick={() => navigate(Routes.libraryLorebookGenerate(lorebook.id))}
+              className="flex items-center px-[0.6em] py-[0.3em] justify-center rounded-full text-fg/70 hover:text-fg hover:bg-fg/10 transition"
+              aria-label="Generate lorebook entry"
+            >
+              <Sparkles size={18} className="text-fg" />
+            </button>
             <button
               onClick={() => {
                 setNewName(lorebook.name);

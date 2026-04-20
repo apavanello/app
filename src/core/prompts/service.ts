@@ -20,6 +20,7 @@ export {
   resetGroupChatRoleplayTemplate,
   resetHelpMeReplyTemplate,
   resetHelpMeReplyConversationalTemplate,
+  resetLorebookEntryWriterTemplate,
   resetAvatarGenerationTemplate,
   resetAvatarEditTemplate,
   resetSceneGenerationTemplate,

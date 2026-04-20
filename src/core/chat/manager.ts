@@ -50,6 +50,19 @@ export interface ChatMessageDebugSnapshot {
   notes: string[];
 }
 
+export interface LorebookEntryDraft {
+  title: string;
+  keywords: string[];
+  content: string;
+  alwaysActive: boolean;
+}
+
+export interface LorebookEntryDraftResult {
+  kind: "entry" | "none";
+  draft?: LorebookEntryDraft | null;
+  reason?: string | null;
+}
+
 export async function sendChatTurn(params: {
   sessionId: string;
   characterId: string;
@@ -212,6 +225,24 @@ export async function generateScenePromptForMessage(params: {
     args: {
       sessionId: params.sessionId,
       messageId: params.messageId,
+    },
+  });
+}
+
+export async function generateLorebookEntryDraft(params: {
+  lorebookId: string;
+  sessionId: string;
+  messageIds: string[];
+  directionPrompt?: string | null;
+  force?: boolean;
+}): Promise<LorebookEntryDraftResult> {
+  return invoke<LorebookEntryDraftResult>("chat_generate_lorebook_entry_draft", {
+    args: {
+      lorebookId: params.lorebookId,
+      sessionId: params.sessionId,
+      messageIds: params.messageIds,
+      directionPrompt: params.directionPrompt ?? null,
+      force: params.force ?? false,
     },
   });
 }

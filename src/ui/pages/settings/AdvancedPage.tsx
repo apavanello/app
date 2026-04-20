@@ -10,6 +10,7 @@ import {
   Info,
   MessageSquare,
   Zap,
+  BookOpen,
   DollarSign,
   AlertTriangle,
   Loader2,
@@ -542,6 +543,45 @@ export function AdvancedPage() {
             onNavigate={() => navigate("/settings/advanced/help-me-reply")}
             colorScheme="emerald"
           />
+
+          <button
+            type="button"
+            onClick={() => navigate("/settings/advanced/lorebook-entry-generator")}
+            className={cn(
+              "group w-full text-left",
+              "relative overflow-hidden rounded-xl border border-fg/10 bg-fg/5 px-4 py-3.5",
+              "transition-all duration-300 hover:border-fg/20",
+              interactive.active.scale,
+              interactive.focus.ring,
+            )}
+          >
+            <div className="relative flex items-start gap-3">
+              <div
+                className={cn(
+                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border",
+                  "border-warning/30 bg-warning/10 text-warning/90",
+                )}
+              >
+                <BookOpen className="h-4 w-4" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex-1">
+                    <span className={cn(typography.body.size, "font-medium text-fg")}>
+                      Lorebook Entry Generator
+                    </span>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-fg/50">
+                      Turn selected chat messages into durable lorebook entries. Pick the writer
+                      model and the prompt template used for drafting.
+                    </p>
+                  </div>
+
+                  <ChevronRight className="h-4 w-4 shrink-0 text-fg/25 transition-colors group-hover:text-fg/50" />
+                </div>
+              </div>
+            </div>
+          </button>
         </SettingsSection>
 
         {/* Memory System Section */}

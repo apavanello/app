@@ -265,7 +265,13 @@ export function ChatHeader({
               data-tour-id="chat-lorebook"
               onClick={() => {
                 if (!characterId) return;
-                navigate(Routes.characterLorebook(characterId));
+                navigate(
+                  sessionId
+                    ? `${Routes.characterLorebook(characterId)}?${new URLSearchParams({
+                        sessionId,
+                      }).toString()}`
+                    : Routes.characterLorebook(characterId),
+                );
               }}
               className="flex items-center justify-center px-[0.6em] py-[0.3em] text-fg/80 transition hover:text-fg"
               aria-label={t("chats.header.manageLorebooks")}

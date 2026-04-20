@@ -16,6 +16,7 @@ pub enum PromptTemplateType {
     DynamicMemoryManager,
     ReplyHelperRoleplay,
     ReplyHelperConversational,
+    LorebookEntryWriter,
     AvatarGeneration,
     AvatarEditRequest,
     SceneGeneration,
@@ -318,6 +319,13 @@ pub struct AdvancedSettings {
     pub help_me_reply_max_tokens: Option<u32>,
     #[serde(default)]
     pub help_me_reply_style: Option<String>,
+    #[serde(default)]
+    pub lorebook_entry_generator_model_id: Option<String>,
+    #[serde(default)]
+    pub lorebook_entry_generator_structured_fallback_format:
+        Option<DynamicMemoryStructuredFallbackFormat>,
+    #[serde(default)]
+    pub lorebook_entry_generator_prompt_template_id: Option<String>,
     #[serde(default)]
     pub dynamic_memory: Option<DynamicMemorySettings>,
     #[serde(default)]
@@ -1021,6 +1029,40 @@ pub struct ChatGenerateDesignReferenceDescriptionArgs {
     pub request_id: Option<String>,
     #[serde(default)]
     pub stream: Option<bool>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatGenerateLorebookEntryDraftArgs {
+    #[serde(alias = "lorebookId")]
+    pub lorebook_id: String,
+    #[serde(alias = "sessionId")]
+    pub session_id: String,
+    #[serde(default, alias = "messageIds")]
+    pub message_ids: Vec<String>,
+    #[serde(default, alias = "directionPrompt")]
+    pub direction_prompt: Option<String>,
+    #[serde(default, alias = "force")]
+    pub force: bool,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct LorebookEntryDraft {
+    pub title: String,
+    pub keywords: Vec<String>,
+    pub content: String,
+    pub always_active: bool,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct LorebookEntryDraftResult {
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft: Option<LorebookEntryDraft>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[derive(Serialize)]

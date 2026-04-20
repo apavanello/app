@@ -26,10 +26,10 @@ use super::service::ChatContext;
 use super::storage::default_character_rules;
 use super::types::{
     ChatAddMessageAttachmentArgs, ChatCompletionArgs, ChatContinueArgs,
-    ChatGenerateDesignReferenceDescriptionArgs, ChatGenerateSceneImageArgs,
-    ChatGenerateScenePromptArgs, ChatRegenerateArgs, ChatTurnResult, ContinueResult,
-    ImageAttachment, PromptTemplateType, RegenerateResult, Session, Settings, StoredMessage,
-    SystemPromptEntry, SystemPromptTemplate,
+    ChatGenerateDesignReferenceDescriptionArgs, ChatGenerateLorebookEntryDraftArgs,
+    ChatGenerateSceneImageArgs, ChatGenerateScenePromptArgs, ChatRegenerateArgs, ChatTurnResult,
+    ContinueResult, ImageAttachment, LorebookEntryDraftResult, PromptTemplateType,
+    RegenerateResult, Session, Settings, StoredMessage, SystemPromptEntry, SystemPromptTemplate,
 };
 use crate::storage_manager::sessions::{messages_upsert_batch_typed, session_upsert_meta_typed};
 
@@ -832,6 +832,13 @@ pub fn reset_help_me_reply_conversational_template(
 }
 
 #[tauri::command]
+pub fn reset_lorebook_entry_writer_template(
+    app: AppHandle,
+) -> Result<SystemPromptTemplate, String> {
+    prompts::reset_lorebook_entry_writer_template(&app)
+}
+
+#[tauri::command]
 pub fn reset_avatar_generation_template(app: AppHandle) -> Result<SystemPromptTemplate, String> {
     prompts::reset_avatar_generation_template(&app)
 }
@@ -1082,6 +1089,14 @@ pub async fn chat_generate_design_reference_description(
     args: ChatGenerateDesignReferenceDescriptionArgs,
 ) -> Result<String, String> {
     super::scene::chat_generate_design_reference_description(app, args).await
+}
+
+#[tauri::command]
+pub async fn chat_generate_lorebook_entry_draft(
+    app: AppHandle,
+    args: ChatGenerateLorebookEntryDraftArgs,
+) -> Result<LorebookEntryDraftResult, String> {
+    super::lorebook_entry_generator::chat_generate_lorebook_entry_draft(app, args).await
 }
 
 #[tauri::command]
