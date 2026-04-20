@@ -332,7 +332,6 @@ function LorebookListView({
   lorebooks,
   assignedLorebookIds,
   loading,
-  assignmentLabel,
   enableLabel,
   disableLabel,
   enableDescription,
@@ -345,7 +344,6 @@ function LorebookListView({
   lorebooks: Lorebook[];
   assignedLorebookIds: Set<string>;
   loading: boolean;
-  assignmentLabel: string;
   enableLabel: string;
   disableLabel: string;
   enableDescription: string;
@@ -360,6 +358,33 @@ function LorebookListView({
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [newName, setNewName] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [entryCounts, setEntryCounts] = useState<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    if (lorebooks.length === 0) {
+      setEntryCounts(new Map());
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const results = await Promise.all(
+          lorebooks.map((lb) =>
+            listLorebookEntries(lb.id)
+              .then((list) => [lb.id, list.length] as const)
+              .catch(() => [lb.id, 0] as const),
+          ),
+        );
+        if (cancelled) return;
+        setEntryCounts(new Map(results));
+      } catch (error) {
+        console.error("Failed to count lorebook entries:", error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [lorebooks]);
 
   // Listen for add event from TopNav
   useEffect(() => {
@@ -451,82 +476,97 @@ function LorebookListView({
               <p>{t("characters.lorebook.noMatchingLorebooks")}</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {/* Assigned Indicator - Only show if not filtering or if filtered list contains assigned ones */}
-              {!searchQuery && Array.from(assignedLorebookIds).length > 0 && (
-                <div className="rounded-xl border border-accent/30 bg-accent/10 p-3">
-                  <div className="flex items-center gap-2">
-                    <Star className="h-4 w-4 fill-accent text-accent" />
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-accent/80">
-                        {t("characters.lorebook.activeLorebooks")}
+            (() => {
+              const assigned = filteredLorebooks.filter((lb) =>
+                assignedLorebookIds.has(lb.id),
+              );
+              const available = filteredLorebooks.filter(
+                (lb) => !assignedLorebookIds.has(lb.id),
+              );
+              const renderRow = (lorebook: Lorebook, isAssigned: boolean) => {
+                const count = entryCounts.get(lorebook.id);
+                return (
+                  <motion.button
+                    key={lorebook.id}
+                    layout="position"
+                    onClick={() => setSelectedLorebook(lorebook)}
+                    className={`group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
+                      isAssigned
+                        ? "border-fg/10 border-l-2 border-l-accent bg-accent/[0.04] hover:bg-accent/[0.08]"
+                        : "border-fg/10 bg-surface-el/40 hover:border-fg/20 hover:bg-surface-el/70"
+                    }`}
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-fg/10 bg-fg/5">
+                      <LorebookAvatar
+                        avatarPath={lorebook.avatarPath}
+                        name={lorebook.name}
+                        iconClassName="h-4 w-4 text-fg/60"
+                        fallbackClassName="bg-fg/5"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold text-fg">
+                        {lorebook.name}
                       </div>
-                      <div className="text-xs text-accent/60">
-                        {assignedLorebookIds.size} {assignmentLabel}
+                      <div className="mt-0.5 truncate font-mono text-[11px] text-fg/40">
+                        {count === undefined
+                          ? t("characters.lorebook.tapToViewEntries")
+                          : t("characters.lorebook.entryCount", { count })}
                       </div>
                     </div>
-                  </div>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-fg/30 transition group-hover:text-fg/60" />
+                  </motion.button>
+                );
+              };
+              const SectionHeader = ({
+                label,
+                count,
+                accent,
+              }: {
+                label: string;
+                count: number;
+                accent?: boolean;
+              }) => (
+                <div
+                  className={`flex items-center gap-2 px-1 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                    accent ? "text-accent/80" : "text-fg/45"
+                  }`}
+                >
+                  <span
+                    className={`h-1 w-1 rounded-full ${accent ? "bg-accent" : "bg-fg/30"}`}
+                  />
+                  <span>{label}</span>
+                  <span className="font-mono text-fg/35">· {count}</span>
                 </div>
-              )}
-
-              {/* Lorebook Items */}
-              <AnimatePresence>
-                {filteredLorebooks.map((lorebook) => {
-                  const isAssigned = assignedLorebookIds.has(lorebook.id);
-                  return (
-                    <motion.button
-                      key={lorebook.id}
-                      onClick={() => setSelectedLorebook(lorebook)}
-                      className={`group relative flex w-full items-center gap-3 overflow-hidden rounded-xl border px-4 py-3 text-left transition-all duration-200 active:scale-[0.995] ${
-                        isAssigned
-                          ? "border-accent/40 bg-accent/10 hover:border-accent/60 hover:bg-accent/15"
-                          : "border-fg/10 bg-surface-el/90 hover:border-fg/25 hover:bg-surface-el/95"
-                      }`}
-                    >
-                      {/* Icon */}
-                      <div
-                        className={`relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border ${
-                          isAssigned ? "border-accent/40 bg-accent/20" : "border-fg/15 bg-fg/8"
-                        }`}
-                      >
-                        <LorebookAvatar
-                          avatarPath={lorebook.avatarPath}
-                          name={lorebook.name}
-                          iconClassName={`h-5 w-5 ${isAssigned ? "text-accent/80" : "text-fg/70"}`}
-                          fallbackClassName={isAssigned ? "bg-accent/20" : "bg-fg/8"}
-                        />
-                      </div>
-
-                      {/* Content */}
-                      <div className="relative min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="truncate text-sm font-semibold text-fg">
-                            {lorebook.name}
-                          </h3>
-                          {isAssigned && (
-                            <Star className="h-3 w-3 shrink-0 fill-accent text-accent" />
-                          )}
-                        </div>
-                        <p className="line-clamp-1 text-xs text-fg/50">
-                          {isAssigned ? assignmentLabel : t("characters.lorebook.tapToViewEntries")}
-                        </p>
-                      </div>
-
-                      {/* Chevron */}
-                      <span
-                        className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition ${
-                          isAssigned
-                            ? "border-accent/30 bg-accent/10 text-accent/80 group-hover:border-accent/50"
-                            : "border-fg/10 bg-fg/5 text-fg/70 group-hover:border-fg/25 group-hover:text-fg"
-                        }`}
-                      >
-                        <ChevronRight size={16} />
-                      </span>
-                    </motion.button>
-                  );
-                })}
-              </AnimatePresence>
-            </div>
+              );
+              return (
+                <div className="space-y-5">
+                  {assigned.length > 0 && (
+                    <section className="space-y-1.5">
+                      <SectionHeader
+                        label={t("characters.lorebook.sectionActive")}
+                        count={assigned.length}
+                        accent
+                      />
+                      <AnimatePresence initial={false}>
+                        {assigned.map((lb) => renderRow(lb, true))}
+                      </AnimatePresence>
+                    </section>
+                  )}
+                  {available.length > 0 && (
+                    <section className="space-y-1.5">
+                      <SectionHeader
+                        label={t("characters.lorebook.sectionAvailable")}
+                        count={available.length}
+                      />
+                      <AnimatePresence initial={false}>
+                        {available.map((lb) => renderRow(lb, false))}
+                      </AnimatePresence>
+                    </section>
+                  )}
+                </div>
+              );
+            })()
           )}
         </motion.div>
       </main>
@@ -1259,7 +1299,6 @@ export function LorebookEditor() {
             lorebooks={lorebooks}
             assignedLorebookIds={assignedLorebookIds}
             loading={isLorebooksLoading}
-            assignmentLabel={assignmentCopy.assignmentLabel}
             enableLabel={assignmentCopy.enableLabel}
             disableLabel={assignmentCopy.disableLabel}
             enableDescription={assignmentCopy.enableDescription}
