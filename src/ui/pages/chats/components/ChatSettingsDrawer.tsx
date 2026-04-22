@@ -9,6 +9,8 @@ interface ChatSettingsDrawerProps {
   onClose: () => void;
   character: Character;
   onOpenAuthorNote?: () => void;
+  shortcutAction?: "model" | null;
+  shortcutActionKey?: number;
 }
 
 export function ChatSettingsDrawer({
@@ -16,6 +18,8 @@ export function ChatSettingsDrawer({
   onClose,
   character,
   onOpenAuthorNote,
+  shortcutAction,
+  shortcutActionKey,
 }: ChatSettingsDrawerProps) {
   const dragRegionProps = useDragRegionProps();
   // Close on Escape
@@ -68,6 +72,8 @@ export function ChatSettingsDrawer({
                 mode="drawer"
                 onClose={onClose}
                 onOpenAuthorNote={onOpenAuthorNote}
+                shortcutAction={shortcutAction}
+                shortcutActionKey={shortcutActionKey}
               />
             </div>
           </motion.aside>

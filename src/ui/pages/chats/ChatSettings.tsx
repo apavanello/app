@@ -268,11 +268,15 @@ export function ChatSettingsContent({
   mode = "page",
   onClose,
   onOpenAuthorNote,
+  shortcutAction,
+  shortcutActionKey,
 }: {
   character: Character;
   mode?: "page" | "drawer";
   onClose?: () => void;
   onOpenAuthorNote?: () => void;
+  shortcutAction?: "model" | null;
+  shortcutActionKey?: number;
 }) {
   const navigate = useNavigate();
   const { backOrReplace } = useNavigationManager();
@@ -381,6 +385,14 @@ export function ChatSettingsContent({
   useEffect(() => {
     setCurrentCharacter(character);
   }, [character]);
+
+  useEffect(() => {
+    if (!shortcutActionKey) return;
+    if (shortcutAction === "model") {
+      setModelSelectorTarget("primary");
+      setShowModelSelector(true);
+    }
+  }, [shortcutAction, shortcutActionKey]);
 
   const getEffectiveModelId = useCallback(() => {
     return currentCharacter?.defaultModelId || globalDefaultModelId || null;
