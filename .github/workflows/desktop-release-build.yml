@@ -315,33 +315,33 @@ jobs:
           BUILD_ARGS+=(--no-bundle)
           bun run tauri "${BUILD_ARGS[@]}"
 
-      - name: Bundle Linux CPU deb
+      - name: Bundle Linux CPU AppImage
         timeout-minutes: 20
         run: |
           BUNDLE_ARGS=(bundle)
           if [ -f tauri-version-override.json ]; then
             BUNDLE_ARGS+=(--config tauri-version-override.json)
           fi
-          BUNDLE_ARGS+=(--bundles deb)
+          BUNDLE_ARGS+=(--bundles appimage)
           bun run tauri "${BUNDLE_ARGS[@]}"
 
-      - name: Package Linux CPU bundle zip
+      - name: Package Linux CPU AppImage
         run: |
           mkdir -p dist-artifacts
-          cd src-tauri/target/release/bundle
-          zip -r ../../../../dist-artifacts/linux-cpu.zip .
+          CPU_APPIMAGE=$(ls src-tauri/target/release/bundle/appimage/*.AppImage | head -n 1)
+          cp "$CPU_APPIMAGE" dist-artifacts/linux-cpu.AppImage
 
-      - name: Upload Linux CPU zip to GitHub Release
+      - name: Upload Linux CPU AppImage to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare_release.outputs.tag }}
-          files: dist-artifacts/linux-cpu.zip
+          files: dist-artifacts/linux-cpu.AppImage
           fail_on_unmatched_files: true
 
   linux_cuda:
     name: Linux Build (CUDA)
     needs: prepare_release
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_cuda_linux == true }}
+    if: ${{ false }}
     runs-on: ubuntu-latest
     env:
       APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
@@ -473,7 +473,7 @@ jobs:
   linux_vulkan:
     name: Linux Build (Vulkan)
     needs: prepare_release
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_vulkan_linux == true }}
+    if: ${{ false }}
     runs-on: ubuntu-latest
     env:
       APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
@@ -603,7 +603,7 @@ jobs:
   windows_cpu:
     name: Windows Build (CPU)
     needs: prepare_release
-    if: ${{ inputs.build_llama_cpu_windows == true }}
+    if: ${{ false }}
     runs-on: windows-latest
     env:
       APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
@@ -716,7 +716,7 @@ jobs:
   windows_cuda:
     name: Windows Build (CUDA)
     needs: prepare_release
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_cuda_windows == true }}
+    if: ${{ false }}
     runs-on: windows-latest
     env:
       APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
@@ -846,7 +846,7 @@ jobs:
   windows_vulkan:
     name: Windows Build (Vulkan)
     needs: prepare_release
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_vulkan_windows == true }}
+    if: ${{ false }}
     runs-on: windows-latest
     env:
       APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
@@ -1075,7 +1075,7 @@ jobs:
   macos_cpu:
     name: macOS Build (CPU, ${{ matrix.arch_label }})
     needs: prepare_release
-    if: ${{ inputs.build_llama_cpu_macos == true }}
+    if: ${{ false }}
     runs-on: macos-14
     strategy:
       fail-fast: false
@@ -1156,7 +1156,7 @@ jobs:
   macos_metal:
     name: macOS Build (Metal, ${{ matrix.arch_label }})
     needs: prepare_release
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_metal_macos == true }}
+    if: ${{ false }}
     runs-on: macos-14
     strategy:
       fail-fast: false
