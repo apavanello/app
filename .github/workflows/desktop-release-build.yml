@@ -326,6 +326,7 @@ jobs:
           bun run tauri "${BUNDLE_ARGS[@]}"
 
       - name: Package Linux CPU AppImage
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist-artifacts
