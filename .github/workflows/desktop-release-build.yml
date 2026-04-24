@@ -315,51 +315,33 @@ jobs:
           BUILD_ARGS+=(--no-bundle)
           bun run tauri "${BUILD_ARGS[@]}"
 
-      - name: Bundle Linux CPU AppImage
+      - name: Bundle Linux CPU deb
         timeout-minutes: 20
         run: |
           BUNDLE_ARGS=(bundle)
           if [ -f tauri-version-override.json ]; then
             BUNDLE_ARGS+=(--config tauri-version-override.json)
           fi
-          BUNDLE_ARGS+=(--bundles appimage)
+          BUNDLE_ARGS+=(--bundles deb)
           bun run tauri "${BUNDLE_ARGS[@]}"
 
-      - name: Package Linux CPU AppImage
-        shell: bash
+      - name: Package Linux CPU bundle zip
         run: |
-          set -euo pipefail
           mkdir -p dist-artifacts
-          APPIMAGE_DIR="src-tauri/target/release/bundle/appimage"
-          if [ ! -d "$APPIMAGE_DIR" ]; then
-            echo "AppImage output directory not found: $APPIMAGE_DIR"
-            exit 1
-          fi
-          mapfile -t APPIMAGE_FILES < <(find "$APPIMAGE_DIR" -maxdepth 1 -type f -name '*.AppImage' | sort)
-          if [ "${#APPIMAGE_FILES[@]}" -eq 0 ]; then
-            echo "No AppImage found in $APPIMAGE_DIR"
-            ls -la "$APPIMAGE_DIR"
-            exit 1
-          fi
-          if [ "${#APPIMAGE_FILES[@]}" -gt 1 ]; then
-            echo "Expected a single AppImage, but found ${#APPIMAGE_FILES[@]} in $APPIMAGE_DIR:"
-            printf '%s\n' "${APPIMAGE_FILES[@]}"
-            exit 1
-          fi
-          CPU_APPIMAGE="${APPIMAGE_FILES[0]}"
-          cp "$CPU_APPIMAGE" dist-artifacts/linux-cpu.AppImage
+          cd src-tauri/target/release/bundle
+          zip -r ../../../../dist-artifacts/linux-cpu.zip .
 
-      - name: Upload Linux CPU AppImage to GitHub Release
+      - name: Upload Linux CPU zip to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare_release.outputs.tag }}
-          files: dist-artifacts/linux-cpu.AppImage
+          files: dist-artifacts/linux-cpu.zip
           fail_on_unmatched_files: true
 
   linux_cuda:
     name: Linux Build (CUDA)
     needs: prepare_release
-    if: ${{ false }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_cuda_linux == true }}
     runs-on: ubuntu-latest
     env:
       APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
@@ -491,7 +473,7 @@ jobs:
   linux_vulkan:
     name: Linux Build (Vulkan)
     needs: prepare_release
-    if: ${{ false }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_vulkan_linux == true }}
     runs-on: ubuntu-latest
     env:
       APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
@@ -621,7 +603,7 @@ jobs:
   windows_cpu:
     name: Windows Build (CPU)
     needs: prepare_release
-    if: ${{ false }}
+    if: ${{ inputs.build_llama_cpu_windows == true }}
     runs-on: windows-latest
     env:
       APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
@@ -734,7 +716,7 @@ jobs:
   windows_cuda:
     name: Windows Build (CUDA)
     needs: prepare_release
-    if: ${{ false }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_cuda_windows == true }}
     runs-on: windows-latest
     env:
       APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
@@ -864,7 +846,7 @@ jobs:
   windows_vulkan:
     name: Windows Build (Vulkan)
     needs: prepare_release
-    if: ${{ false }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_vulkan_windows == true }}
     runs-on: windows-latest
     env:
       APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
@@ -1093,7 +1075,7 @@ jobs:
   macos_cpu:
     name: macOS Build (CPU, ${{ matrix.arch_label }})
     needs: prepare_release
-    if: ${{ false }}
+    if: ${{ inputs.build_llama_cpu_macos == true }}
     runs-on: macos-14
     strategy:
       fail-fast: false
@@ -1174,7 +1156,7 @@ jobs:
   macos_metal:
     name: macOS Build (Metal, ${{ matrix.arch_label }})
     needs: prepare_release
-    if: ${{ false }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_llama_metal_macos == true }}
     runs-on: macos-14
     strategy:
       fail-fast: false
