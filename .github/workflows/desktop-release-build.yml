@@ -329,12 +329,22 @@ jobs:
         run: |
           mkdir -p dist-artifacts
           APPIMAGE_DIR="src-tauri/target/release/bundle/appimage"
-          CPU_APPIMAGE="$(find "$APPIMAGE_DIR" -maxdepth 1 -type f -name '*.AppImage' | head -n 1)"
-          if [ -z "$CPU_APPIMAGE" ]; then
-            echo "No AppImage found in $APPIMAGE_DIR"
-            ls -la "$APPIMAGE_DIR" || true
+          if [ ! -d "$APPIMAGE_DIR" ]; then
+            echo "AppImage output directory not found: $APPIMAGE_DIR"
             exit 1
           fi
+          mapfile -t APPIMAGE_FILES < <(find "$APPIMAGE_DIR" -maxdepth 1 -type f -name '*.AppImage' | sort)
+          if [ "${#APPIMAGE_FILES[@]}" -eq 0 ]; then
+            echo "No AppImage found in $APPIMAGE_DIR"
+            ls -la "$APPIMAGE_DIR"
+            exit 1
+          fi
+          if [ "${#APPIMAGE_FILES[@]}" -gt 1 ]; then
+            echo "Expected a single AppImage, but found ${#APPIMAGE_FILES[@]} in $APPIMAGE_DIR:"
+            printf '%s\n' "${APPIMAGE_FILES[@]}"
+            exit 1
+          fi
+          CPU_APPIMAGE="${APPIMAGE_FILES[0]}"
           cp "$CPU_APPIMAGE" dist-artifacts/linux-cpu.AppImage
 
       - name: Upload Linux CPU AppImage to GitHub Release
