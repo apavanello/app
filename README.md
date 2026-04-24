@@ -1,8 +1,6 @@
 <div align="center">
   <img src="https://github.com/LettuceAI/.github/blob/main/profile/LettuceAI-banner.png" alt="LettuceAI Banner" />
 
-
-
    
   # LettuceAI
   
