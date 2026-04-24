@@ -327,6 +327,7 @@ jobs:
 
       - name: Package Linux CPU AppImage
         run: |
+          set -euo pipefail
           mkdir -p dist-artifacts
           APPIMAGE_DIR="src-tauri/target/release/bundle/appimage"
           if [ ! -d "$APPIMAGE_DIR" ]; then
